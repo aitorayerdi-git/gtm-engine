@@ -1,0 +1,48 @@
+# Operating-system and editor files
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python environments, caches, and build products
+.venv/
+venv/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+
+# Private workbooks and generated spreadsheet artifacts
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+~$*
+
+# Generated runs and local source/evidence stores
+outputs/
+analysis/
+runtime_tests/
+local_data/
+
+# Superseded local questionnaire files; deliberately excluded from evidence
+questions_answers.txt
+questions_answers.txt~
