@@ -2351,3 +2351,13 @@ The source repository is therefore public, installable without the local data tr
 by the same formatting, lint, type, test-coverage, and dependency checks used locally. Operational
 workbooks, imported data, calculated results, extracted workbook evidence, and local environments
 remain outside Git under the documented data policy.
+
+### CI runtime maintenance
+
+The follow-up CI run for the publication-evidence commit passed every job but reported that the
+older `actions/checkout@v4` and `actions/setup-python@v5` definitions target deprecated Node 20.
+GitHub's official action documentation was checked on 8 August 2026. Both actions now document v7
+as the current major; checkout v5 and setup-python v6 introduced Node 24, while v7 carries the
+current action internals and usage examples. The workflow was therefore updated to
+`actions/checkout@v7` and `actions/setup-python@v7`. It retains explicit `contents: read`
+permissions and the fixed Python 3.13 target.
