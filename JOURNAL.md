@@ -2226,7 +2226,7 @@ aggregation map, sign choice, and reconciliation requirement.
 The GTM v0.3 source tree was converted into a Git repository with `main` as its initial branch. A
 GitHub repository was created at `https://github.com/vasilybelokurov/gtm-engine`; it was changed to
 public visibility at the user's direction before the first source push. The local `origin` remote
-uses the corresponding HTTPS URL.
+uses the repository's authenticated SSH URL.
 
 ### Publication boundary
 
@@ -2288,3 +2288,66 @@ typed-package marker: present
 
 The first commit and push, clean-clone verification, and GitHub Actions result will be recorded in
 a follow-up entry after publication is complete.
+
+## 2026-08-08 — Public repository published and independently verified
+
+The reviewed 54-file publication set was committed as:
+
+```text
+Commit   2c931ca6996df0f1ca8b0df6cf6b53677a622665
+Subject  Initial GTM v0.3 reference engine
+Branch   main
+Remote   git@github.com:vasilybelokurov/gtm-engine.git
+Web      https://github.com/vasilybelokurov/gtm-engine
+Access   Public
+```
+
+The first HTTPS push was rejected because the GitHub CLI OAuth token did not carry GitHub's
+separate `workflow` scope and the commit includes `.github/workflows/ci.yml`. The machine's
+existing authenticated GitHub SSH identity was verified as `vasilybelokurov`; `origin` was changed
+to SSH and the same commit then pushed successfully without removing or weakening CI. Local `main`
+now tracks `origin/main`.
+
+### Clean public-clone verification
+
+The repository was cloned from its public HTTPS URL into a new temporary directory, with no use of
+the original checkout, its `.venv`, or any ignored workbook. A new Python 3.13 environment was
+created and the documented developer installation command succeeded:
+
+```text
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+```
+
+The clean checkout then passed:
+
+```text
+Ruff format check: 43 files already formatted
+Ruff lint: all checks passed
+mypy strict: no issues in 16 source files
+pytest: 49 passed, 1 skipped in 3.02 seconds
+pip check: no broken requirements
+CLI help smoke test: passed
+```
+
+The skipped test is the intentional optional inventory check for the private
+`Gas_Trading_Model 070826.xlsm`. Its absence proves that a public checkout does not depend on or
+contain the legacy production workbook. All synthetic engine, adapter, regression, property, and
+performance tests passed.
+
+### Hosted CI evidence
+
+GitHub Actions independently ran the repository CI workflow for the initial commit and completed
+successfully:
+
+```text
+Run ID      31252425332
+Commit      2c931ca6996df0f1ca8b0df6cf6b53677a622665
+Conclusion  success
+URL         https://github.com/vasilybelokurov/gtm-engine/actions/runs/31252425332
+```
+
+The source repository is therefore public, installable without the local data tree, and guarded
+by the same formatting, lint, type, test-coverage, and dependency checks used locally. Operational
+workbooks, imported data, calculated results, extracted workbook evidence, and local environments
+remain outside Git under the documented data policy.
