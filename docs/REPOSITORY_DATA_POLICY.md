@@ -38,6 +38,17 @@ maintainers may place an authorized copy there to run the additional test; Git i
 The portable CI suite creates synthetic legacy workbooks in temporary directories and does not
 need private data.
 
+## Reproducing the synthetic validation model
+
+The fixing, July-delivery, and exposure validation workbooks do not need to be committed. A clean
+checkout can recreate them from versioned code and `docs/GTM_ACTIVE_SETUP_MAPPING_v0.3.csv` by
+running `scripts/create_fixing_test.py` without `--source`. The generator creates synthetic
+calendar, trade, price, FX, and opening-balance inputs, reloads the generated workbook through the
+strict adapter, and requires a verified build before writing the report.
+
+This reproducible synthetic path does not replace authorized private inputs for a production run.
+It proves that the engine and reviewed test scenario can be reconstructed without local evidence.
+
 ## Reproducing a local report
 
 1. Obtain the authorized source workbook through the approved private channel.

@@ -2646,3 +2646,28 @@ The underlying detail table still retains Exposure MtM, Gross Delta Exposure MtM
 Adjustment for audit and reconciliation. Formula, dropdown, date-boundary, table-package, and
 workbook-reload checks passed on the definitive
 `verification/output test fixing exposure Jul26.xlsx` file.
+
+## 2026-08-09 — Clean-clone synthetic model reconstruction
+
+The repository was made self-contained for reconstruction of the reviewed synthetic fixing,
+full-July-delivery, and exposure validation model. `scripts/create_fixing_test.py` no longer
+requires a prior local Excel workbook. When `--source` is omitted it generates the complete input
+from versioned code and the reviewed mapping: 13 BOOKS, 17 BUY trades, zero opening P&L, calendar,
+curve prices, real TTFDA/PVB fixing prices, the remaining synthetic fixing series, EURUSD rates,
+and optional July 2026 delivery elections.
+
+The generator writes the input workbook, reloads it through the strict Excel adapter, requires a
+`VERIFIED` engine result with no validation findings, and only then writes the fixing and exposure
+report. Generated workbooks remain ignored reproducible artifacts; no private or production data
+was added to Git.
+
+An end-to-end portable test now invokes this clean-checkout path in a temporary directory and
+checks the rebuilt input, engine result, report sheet contract, and January 2026 through December
+2028 exposure-matrix boundaries. A manual reconstruction in a new local directory also completed
+`VERIFIED` with 17 trades, two delivery elections, and the expected 130 MWh fixing volume in each
+derived delivery category through 10 July. Repository metadata and installation documentation now
+point to `aitorayerdi-git/gtm-engine`.
+
+The final clean-clone gate passed: Ruff format and lint, mypy strict, and pip dependency checks
+reported no issues; pytest completed with 53 passed and one intentional private-workbook skip;
+branch coverage was 87.80% against the 85% required gate.

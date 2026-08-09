@@ -30,8 +30,8 @@ dev = [
 gtm-engine = "gtm_engine.cli:main"
 
 [project.urls]
-Repository = "https://github.com/vasilybelokurov/gtm-engine"
-Documentation = "https://github.com/vasilybelokurov/gtm-engine/tree/main/docs"
+Repository = "https://github.com/aitorayerdi-git/gtm-engine"
+Documentation = "https://github.com/aitorayerdi-git/gtm-engine/tree/main/docs"
 
 [tool.setuptools.packages.find]
 where = ["src"]

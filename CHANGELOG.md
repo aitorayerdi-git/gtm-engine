@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Made the fixing, delivery, and exposure validation workbooks reproducible from a clean checkout
+  without any local or private workbook dependency.
+- Added an end-to-end automated clean-checkout reconstruction test and updated repository URLs.
+
 This file records user-visible release changes. `JOURNAL.md` contains the complete investigation
 and implementation history.
 

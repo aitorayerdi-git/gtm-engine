@@ -19,7 +19,21 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from gtm_engine.canonicalize import Registry
 from gtm_engine.excel import create_excel_template, load_excel_bundle, load_setup_mapping
 from gtm_engine.fx import FxIndex
-from gtm_engine.models import BuildStatus, DeliveryElection, FixingPrice, Side, Trade
+from gtm_engine.models import (
+    BuildConfig,
+    BuildStatus,
+    CurvePrice,
+    DeliveryElection,
+    FixingMethod,
+    FixingPrice,
+    FxRate,
+    InitialPnl,
+    InputBundle,
+    MarketCalendarDay,
+    Side,
+    Trade,
+    TradeSource,
+)
 from gtm_engine.pipeline import build
 
 ZERO = Decimal("0")
@@ -31,6 +45,163 @@ DELIVERY_COLUMNS = {
 
 def _days(first: date, last: date) -> tuple[date, ...]:
     return tuple(first + timedelta(days=i) for i in range((last - first).days + 1))
+
+
+def _delivery_elections(enabled: bool) -> tuple[DeliveryElection, ...]:
+    if not enabled:
+        return ()
+    return (
+        DeliveryElection(
+            decision_date=date(2026, 6, 30),
+            book="CGTO",
+            underlying="TTFDA Heren",
+            side=Side.BUY,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+            delivery_daily_qty=Decimal("10"),
+            unit="MWh",
+            source_row_id="TEST-DELIVERY-TTFDA-JUL26",
+            comment="All July 2026 TTFDA Heren volume elected for delivery.",
+        ),
+        DeliveryElection(
+            decision_date=date(2026, 6, 30),
+            book="CGTO",
+            underlying="PVB Heren",
+            side=Side.BUY,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+            delivery_daily_qty=Decimal("10"),
+            unit="MWh",
+            source_row_id="TEST-DELIVERY-PVB-JUL26",
+            comment="All July 2026 PVB Heren volume elected for delivery.",
+        ),
+    )
+
+
+def _synthetic_bundle(mapping: Path, *, july_delivery: bool = False) -> InputBundle:
+    books, mapped = load_setup_mapping(mapping)
+    underlyings = tuple(
+        row.model_copy(update={"currency": "USD"})
+        if row.source_underlying in {"Brent Dated", "HH"}
+        else row
+        for row in mapped
+    )
+    config = BuildConfig(
+        initial_market_date=date(2025, 12, 30),
+        historical_start_date=date(2025, 12, 31),
+        historical_end_date=date(2026, 7, 10),
+    )
+    calendar = tuple(
+        MarketCalendarDay(date=value, is_market_day=value.weekday() < 5)
+        for value in _days(date(2025, 12, 1), date(2028, 12, 31))
+    )
+    trades = tuple(
+        Trade(
+            source_row_id=f"TEST-TRADE-{index:02d}",
+            trade_date=date(2025, 12, 31),
+            book="CGTO",
+            underlying=profile.source_underlying,
+            side=Side.BUY,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            daily_qty=Decimal("10"),
+            execution_price=Decimal("100"),
+            trade_source=TradeSource.ACTUAL,
+        )
+        for index, profile in enumerate(underlyings, start=1)
+    )
+    fixing_profiles = {profile.fixing_price_underlying: profile for profile in underlyings}
+    profile_order = {name: index for index, name in enumerate(sorted(fixing_profiles), start=1)}
+    fixing_prices: list[FixingPrice] = []
+    for calendar_day in calendar:
+        for name, profile in sorted(fixing_profiles.items()):
+            if name == "TTFDA Heren":
+                value = Decimal("50")
+            elif name == "PVB Heren":
+                value = Decimal("70")
+            elif name == "Brent Dated":
+                value = Decimal("80")
+            elif name == "HH":
+                value = Decimal("4")
+            elif profile.fixing_method is FixingMethod.MONTH_AHEAD:
+                value = Decimal("30") + Decimal(calendar_day.date.timetuple().tm_yday) / Decimal(
+                    "1000"
+                )
+            else:
+                value = Decimal("10") + Decimal(profile_order[name]) / Decimal("10")
+            fixing_prices.append(
+                FixingPrice(
+                    price_lookup_date=calendar_day.date,
+                    underlying=name,
+                    fixing_price=value,
+                    currency=profile.currency,
+                    unit=profile.unit,
+                    source_id=f"SYNTH-FIX-{name}-{calendar_day.date.isoformat()}",
+                )
+            )
+    curve_profiles = {profile.curve_underlying: profile for profile in underlyings}
+    delivery_months = tuple(date(2026, month, 1) for month in range(1, 13))
+    curve_prices: list[CurvePrice] = []
+    for calendar_day in calendar:
+        if not calendar_day.is_market_day or not (
+            config.initial_market_date <= calendar_day.date <= config.historical_end_date
+        ):
+            continue
+        for name, profile in sorted(curve_profiles.items()):
+            value = (
+                Decimal("80")
+                if name == "Brent Dated"
+                else Decimal("4")
+                if name == "HH"
+                else Decimal("100")
+            )
+            for delivery_month in delivery_months:
+                curve_prices.append(
+                    CurvePrice(
+                        market_date=calendar_day.date,
+                        underlying=name,
+                        delivery_month=delivery_month,
+                        curve_price=value,
+                        currency=profile.currency,
+                        unit=profile.unit,
+                        source_id=(
+                            f"SYNTH-CURVE-{name}-{calendar_day.date.isoformat()}-"
+                            f"{delivery_month.isoformat()}"
+                        ),
+                    )
+                )
+    fx_rates = tuple(
+        FxRate(
+            rate_date=row.date,
+            currency="USD",
+            currency_per_eur=Decimal("1.20"),
+            source_id=f"SYNTH-FX-USD-{row.date.isoformat()}",
+        )
+        for row in calendar
+        if row.is_market_day and row.date <= config.historical_end_date
+    )
+    return InputBundle(
+        config=config,
+        books=books,
+        underlyings=underlyings,
+        calendar=calendar,
+        initial_exposure=(),
+        initial_pnl=tuple(
+            InitialPnl(
+                initial_market_date=config.initial_market_date,
+                book=book.book,
+                amount=ZERO,
+                source_row_id=f"SYNTH-IPNL-{index:02d}",
+            )
+            for index, book in enumerate(books, start=1)
+        ),
+        trades=trades,
+        delivery_elections=_delivery_elections(july_delivery),
+        curve_prices=tuple(curve_prices),
+        fixing_prices=tuple(fixing_prices),
+        fx_rates=fx_rates,
+        operating_flows=(),
+    )
 
 
 def _updated_bundle(source: Path, mapping: Path, *, july_delivery: bool = False):
@@ -82,36 +253,7 @@ def _updated_bundle(source: Path, mapping: Path, *, july_delivery: bool = False)
             ordinary_prices.append(row)
     prices = [*ordinary_prices, *selected_prices.values()]
     prices.sort(key=lambda row: (row.price_lookup_date, row.underlying, row.source_id))
-    delivery_elections = (
-        (
-            DeliveryElection(
-                decision_date=date(2026, 6, 30),
-                book="CGTO",
-                underlying="TTFDA Heren",
-                side=Side.BUY,
-                start_date=date(2026, 7, 1),
-                end_date=date(2026, 7, 31),
-                delivery_daily_qty=Decimal("10"),
-                unit="MWh",
-                source_row_id="TEST-DELIVERY-TTFDA-JUL26",
-                comment="All July 2026 TTFDA Heren volume elected for delivery.",
-            ),
-            DeliveryElection(
-                decision_date=date(2026, 6, 30),
-                book="CGTO",
-                underlying="PVB Heren",
-                side=Side.BUY,
-                start_date=date(2026, 7, 1),
-                end_date=date(2026, 7, 31),
-                delivery_daily_qty=Decimal("10"),
-                unit="MWh",
-                source_row_id="TEST-DELIVERY-PVB-JUL26",
-                comment="All July 2026 PVB Heren volume elected for delivery.",
-            ),
-        )
-        if july_delivery
-        else ()
-    )
+    delivery_elections = _delivery_elections(july_delivery)
     return bundle.model_copy(
         update={
             "underlyings": underlyings,
@@ -399,8 +541,14 @@ def _write_output(destination: Path, bundle, result) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", type=Path, required=True)
-    parser.add_argument("--mapping", type=Path, required=True)
+    parser.add_argument(
+        "--source",
+        type=Path,
+        help="Optional prior input workbook to normalize; omit for a self-contained synthetic run.",
+    )
+    parser.add_argument(
+        "--mapping", type=Path, default=Path("docs/GTM_ACTIVE_SETUP_MAPPING_v0.3.csv")
+    )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -409,7 +557,11 @@ def main() -> int:
         help="Elect all July 2026 TTFDA Heren and PVB Heren BUY volume for delivery.",
     )
     args = parser.parse_args()
-    bundle = _updated_bundle(args.source, args.mapping, july_delivery=args.july_delivery)
+    bundle = (
+        _updated_bundle(args.source, args.mapping, july_delivery=args.july_delivery)
+        if args.source is not None
+        else _synthetic_bundle(args.mapping, july_delivery=args.july_delivery)
+    )
     result = build(bundle)
     if result.manifest.status is not BuildStatus.VERIFIED:
         errors = [row.model_dump(mode="json") for row in result.validation]

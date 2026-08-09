@@ -30,7 +30,7 @@ use `python3` in the commands below.
 ## 2. Clone the repository
 
 ```sh
-git clone https://github.com/vasilybelokurov/gtm-engine.git
+git clone https://github.com/aitorayerdi-git/gtm-engine.git
 cd gtm-engine
 ```
 
@@ -168,12 +168,29 @@ You can recreate it from the reviewed mapping at any time:
   --mapping docs/GTM_ACTIVE_SETUP_MAPPING_v0.3.csv
 ```
 
-This command creates the workbook structure and seeds 13 BOOK and 18 Underlying mappings. It does
+This command creates the workbook structure and seeds 13 BOOK and 17 Underlying mappings. It does
 not invent a production calendar, opening state, trades, or prices.
 
 Private `.xlsm` sources, generated `.xlsx` workbooks, `outputs/`, `analysis/`, and runtime-test
 snapshots are excluded by `.gitignore`. Keep them local. Read
 [the repository data policy](docs/REPOSITORY_DATA_POLICY.md) before adding source material.
+
+### Rebuild the complete synthetic validation workbooks
+
+The repository can reproduce the current synthetic fixing, delivery, and exposure scenario
+without any private or previously generated workbook:
+
+```sh
+.venv/bin/python scripts/create_fixing_test.py \
+  --input outputs/reproduction/Input_test_fixing_delivery_Jul26.xlsx \
+  --output outputs/reproduction/output_test_fixing_exposure_Jul26.xlsx \
+  --july-delivery
+```
+
+On Windows PowerShell use `.venv\Scripts\python.exe` and backticks for line continuation. The
+command generates its authoritative synthetic data, writes and reloads the Excel input, requires
+a verified engine build, and creates the fixing and exposure report. This clean-clone path is also
+covered by the automated test suite.
 
 ### Optional: create the input files from a legacy workbook
 

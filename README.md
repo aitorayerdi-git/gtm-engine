@@ -39,10 +39,10 @@ Version 0.3 implements and tests:
 - deterministic Build IDs, output hashes, validation evidence, and atomic publication;
 - a legacy-format `Daily Report D2` tab generated from verified Python output.
 
-The local quality gate currently has 50 passing tests and 89.89% coverage. A clean clone runs 49
-portable tests; the optional private-workbook inventory test skips when the legacy workbook is not
-present. The performance target is less than 60 seconds for a full production rebuild and less
-than 2 GiB peak memory.
+The portable quality gate includes a complete clean-checkout reconstruction of the synthetic
+fixing, delivery, and exposure workbooks. The optional private-workbook inventory test skips when
+the legacy workbook is not present. The performance target is less than 60 seconds for a full
+production rebuild and less than 2 GiB peak memory.
 
 Production acceptance remains a business decision. It requires approval of the named golden
 cases, especially product-specific DAY_AHEAD weekend pricing, the Logistics sign, the opening
@@ -54,7 +54,7 @@ historical July 2026 run is documented in the specification; it is not a general
 For a new checkout:
 
 ```sh
-git clone https://github.com/vasilybelokurov/gtm-engine.git
+git clone https://github.com/aitorayerdi-git/gtm-engine.git
 cd gtm-engine
 python3.13 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
@@ -69,6 +69,33 @@ verification and troubleshooting.
 After installation, read the [one-page Quick Start](docs/GTM_QUICK_START.md). The
 [detailed Excel manual](docs/GTM_EXCEL_INTERFACE_GUIDE.md) defines every input, output, sign, and
 reconciliation step.
+
+## Reproduce the synthetic validation model from a clean clone
+
+No local workbook is required to rebuild the reviewed synthetic fixing, full-July-delivery, and
+exposure test. From the repository root run:
+
+```sh
+.venv/bin/python scripts/create_fixing_test.py \
+  --input outputs/reproduction/Input_test_fixing_delivery_Jul26.xlsx \
+  --output outputs/reproduction/output_test_fixing_exposure_Jul26.xlsx \
+  --july-delivery
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\python.exe scripts\create_fixing_test.py `
+  --input outputs\reproduction\Input_test_fixing_delivery_Jul26.xlsx `
+  --output outputs\reproduction\output_test_fixing_exposure_Jul26.xlsx `
+  --july-delivery
+```
+
+The script creates the calendar, 17 trades, curve prices, fixing prices, FX rates, zero opening
+balances, and the two July 2026 delivery elections from versioned code and the reviewed mapping.
+It then writes the input, reloads it through the strict Excel adapter, requires a `VERIFIED` build,
+and writes all fixing and exposure report sheets. Generated `.xlsx` files remain intentionally
+outside Git because they are reproducible artifacts.
 
 ## Normal Excel workflow
 
