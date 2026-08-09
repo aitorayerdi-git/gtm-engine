@@ -24,10 +24,12 @@ from .models import (
     BuildStatus,
     CumulativePnlRow,
     CurvePrice,
+    DeliveryElection,
     EventLedgerRow,
     ExposureRow,
     FixingPrice,
     FixingRow,
+    FxRate,
     InitialExposure,
     InitialPnl,
     InputBundle,
@@ -113,8 +115,10 @@ def load_bundle(directory: str | Path) -> InputBundle:
         ("initial_exposure.csv", InitialExposure, True),
         ("initial_pnl.csv", InitialPnl, True),
         ("trades.csv", Trade, False),
+        ("delivery_elections.csv", DeliveryElection, False),
         ("curve_prices.csv", CurvePrice, False),
         ("fixing_prices.csv", FixingPrice, False),
+        ("fx_rates.csv", FxRate, False),
         ("operating_flows.csv", OperatingFlow, False),
     )
     loaded: dict[str, tuple[BaseModel, ...]] = {}
@@ -133,8 +137,10 @@ def load_bundle(directory: str | Path) -> InputBundle:
         initial_exposure=loaded["initial_exposure.csv"],  # type: ignore[arg-type]
         initial_pnl=loaded["initial_pnl.csv"],  # type: ignore[arg-type]
         trades=loaded["trades.csv"],  # type: ignore[arg-type]
+        delivery_elections=loaded["delivery_elections.csv"],  # type: ignore[arg-type]
         curve_prices=loaded["curve_prices.csv"],  # type: ignore[arg-type]
         fixing_prices=loaded["fixing_prices.csv"],  # type: ignore[arg-type]
+        fx_rates=loaded["fx_rates.csv"],  # type: ignore[arg-type]
         operating_flows=loaded["operating_flows.csv"],  # type: ignore[arg-type]
         input_hashes=hashes,
     )
@@ -183,8 +189,10 @@ def write_bundle(bundle: InputBundle, directory: str | Path) -> Path:
             ("initial_exposure.csv", bundle.initial_exposure, InitialExposure),
             ("initial_pnl.csv", bundle.initial_pnl, InitialPnl),
             ("trades.csv", bundle.trades, Trade),
+            ("delivery_elections.csv", bundle.delivery_elections, DeliveryElection),
             ("curve_prices.csv", bundle.curve_prices, CurvePrice),
             ("fixing_prices.csv", bundle.fixing_prices, FixingPrice),
+            ("fx_rates.csv", bundle.fx_rates, FxRate),
             ("operating_flows.csv", bundle.operating_flows, OperatingFlow),
         )
         for filename, rows, model in tables:

@@ -38,10 +38,12 @@ from .models import (
     BuildStatus,
     CumulativePnlRow,
     CurvePrice,
+    DeliveryElection,
     EventLedgerRow,
     ExposureRow,
     FixingPrice,
     FixingRow,
+    FxRate,
     InitialExposure,
     InitialPnl,
     InputBundle,
@@ -93,6 +95,7 @@ DATE_FIELDS = {
     "historical_end_date",
     "date",
     "trade_date",
+    "decision_date",
     "start_date",
     "end_date",
     "market_date",
@@ -104,10 +107,12 @@ DATE_FIELDS = {
     "applied_market_date",
     "price_lookup_date",
     "economic_date",
+    "rate_date",
 }
 DATETIME_FIELDS = {"source_as_of", "started_at", "finished_at"}
 VOLUME_FIELDS = {
     "daily_qty",
+    "delivery_daily_qty",
     "exposure_volume",
     "fixing_volume",
     "signed_volume",
@@ -190,6 +195,13 @@ INPUT_TABLES = (
     ),
     TableSpec("TRADES", "tblTrades", Trade, "Actual and simulation trade events.", is_input=True),
     TableSpec(
+        "DELIVERY ELECTIONS",
+        "tblDeliveryElections",
+        DeliveryElection,
+        "Daily BUY/SELL volume elected for physical delivery.",
+        is_input=True,
+    ),
+    TableSpec(
         "CURVE PRICES",
         "tblCurvePrices",
         CurvePrice,
@@ -201,6 +213,13 @@ INPUT_TABLES = (
         "tblFixingPrices",
         FixingPrice,
         "Fixing observations keyed by lookup date and configured price underlying.",
+        is_input=True,
+    ),
+    TableSpec(
+        "FX RATES",
+        "tblFxRates",
+        FxRate,
+        "Daily currency units per EUR; prior available observation is used.",
         is_input=True,
     ),
     TableSpec(
@@ -322,10 +341,22 @@ def _find_table(workbook: Any, table_name: str) -> tuple[Worksheet, Table]:
 
 
 def _require_contract(workbook: Any) -> None:
-    missing_sheets = [name for name in SHEET_ORDER if name not in workbook.sheetnames]
+    missing_sheets = [
+        name
+        for name in SHEET_ORDER
+        if name not in workbook.sheetnames and name not in {"FX RATES", "DELIVERY ELECTIONS"}
+    ]
     if missing_sheets:
         raise ExcelAdapterError(f"Required worksheet(s) missing: {', '.join(missing_sheets)}")
-    for table_name in ("tblControl", *(spec.table for spec in INPUT_TABLES), "tblManifest"):
+    for table_name in (
+        "tblControl",
+        *(
+            spec.table
+            for spec in INPUT_TABLES
+            if spec.table not in {"tblFxRates", "tblDeliveryElections"}
+        ),
+        "tblManifest",
+    ):
         _find_table(workbook, table_name)
     for spec in OUTPUT_TABLES:
         _find_table(workbook, spec.table)
@@ -346,7 +377,10 @@ def _read_table(workbook: Any, spec: TableSpec) -> tuple[BaseModel, ...]:
         raise ExcelAdapterError(f"Excel table {spec.table} has no header row")
     headers = tuple(_normalize_header(cell.value) for cell in cells[0])
     expected = tuple(spec.model.model_fields)
-    if headers != expected:
+    legacy_underlyings = spec.table == "tblUnderlyings" and headers == tuple(
+        field for field in expected if field != "include_fixing_in_pnl"
+    )
+    if headers != expected and not legacy_underlyings:
         raise ExcelAdapterError(
             f"Excel table {spec.table} headers do not match the contract. "
             f"Expected: {', '.join(_display_header(name) for name in expected)}"
@@ -365,6 +399,8 @@ def _read_table(workbook: Any, spec: TableSpec) -> tuple[BaseModel, ...]:
         if all(value is None for value in values):
             continue
         record = dict(zip(headers, values, strict=True))
+        if legacy_underlyings:
+            record["include_fixing_in_pnl"] = True
         source = record.get("source_row_id") or record.get("source_id")
         context = f", source={source}" if source else ""
         try:
@@ -428,7 +464,15 @@ def load_excel_bundle(workbook_path: str | Path) -> InputBundle:
     try:
         _require_contract(workbook)
         config = _read_control(workbook)
-        loaded = {spec.table: _read_table(workbook, spec) for spec in INPUT_TABLES}
+        loaded = {
+            spec.table: (
+                _read_table(workbook, spec)
+                if spec.table not in {"tblFxRates", "tblDeliveryElections"}
+                or spec.sheet in workbook.sheetnames
+                else ()
+            )
+            for spec in INPUT_TABLES
+        }
     finally:
         workbook.close()
     return InputBundle(
@@ -439,8 +483,10 @@ def load_excel_bundle(workbook_path: str | Path) -> InputBundle:
         initial_exposure=loaded["tblInitialExposure"],  # type: ignore[arg-type]
         initial_pnl=loaded["tblInitialPnl"],  # type: ignore[arg-type]
         trades=loaded["tblTrades"],  # type: ignore[arg-type]
+        delivery_elections=loaded["tblDeliveryElections"],  # type: ignore[arg-type]
         curve_prices=loaded["tblCurvePrices"],  # type: ignore[arg-type]
         fixing_prices=loaded["tblFixingPrices"],  # type: ignore[arg-type]
+        fx_rates=loaded["tblFxRates"],  # type: ignore[arg-type]
         operating_flows=loaded["tblOperatingFlows"],  # type: ignore[arg-type]
         input_hashes={"excel_workbook": _file_hash(path)},
     )
@@ -475,6 +521,7 @@ def load_setup_mapping(
                             "curve_underlying": row["curve_underlying"],
                             "fixing_price_underlying": row["fixing_price_underlying"],
                             "fixing_price_basis": row["fixing_price_basis"],
+                            "include_fixing_in_pnl": row.get("include_fixing_in_pnl", "TRUE"),
                             "active": True,
                             "current_month_uses_next_curve": row["current_month_uses_next_curve"],
                         }
@@ -841,8 +888,10 @@ def create_excel_template(
             "tblInitialExposure": bundle.initial_exposure,
             "tblInitialPnl": bundle.initial_pnl,
             "tblTrades": bundle.trades,
+            "tblDeliveryElections": bundle.delivery_elections,
             "tblCurvePrices": bundle.curve_prices,
             "tblFixingPrices": bundle.fixing_prices,
+            "tblFxRates": bundle.fx_rates,
             "tblOperatingFlows": bundle.operating_flows,
         }
     else:

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .calendar import CalendarIndex
 from .canonicalize import Registry
+from .delivery import split_delivery_trades
 from .exposure import (
     build_unpriced_exposure,
     opening_mtms,
@@ -19,6 +20,7 @@ from .fixings import (
     price_fixings,
     validate_required_fixing_prices,
 )
+from .fx import validate_fx_requirements
 from .invariants import validate_fixing_conservation, validate_output_invariants
 from .manifest import (
     build_id_from_fingerprint,
@@ -50,8 +52,10 @@ def _input_row_counts(bundle: InputBundle) -> dict[str, int]:
         "initial_exposure": len(bundle.initial_exposure),
         "initial_pnl": len(bundle.initial_pnl),
         "trades": len(bundle.trades),
+        "delivery_elections": len(bundle.delivery_elections),
         "curve_prices": len(bundle.curve_prices),
         "fixing_prices": len(bundle.fixing_prices),
+        "fx_rates": len(bundle.fx_rates),
         "operating_flows": len(bundle.operating_flows),
     }
 
@@ -204,12 +208,28 @@ def build(bundle: InputBundle) -> BuildResult:
                 stage="Preflight",
             )
 
+        calculation_bundle, delivery_issues = split_delivery_trades(bundle, build_id)
+        validations += delivery_issues
+        if has_errors(validations):
+            return _failed_result(
+                bundle=bundle,
+                run_id=run_id,
+                build_id=build_id,
+                fingerprint=fingerprint,
+                started_at=started_at,
+                validations=validations,
+                peak_memory=max(peak_memory, current_memory_bytes()),
+                stage="DeliveryElections",
+            )
+
+        registry = Registry.from_bundle(calculation_bundle)
+
         fixing_events, trade_events, schedule_issues = build_schedules(
-            bundle, registry, calendar, build_id
+            calculation_bundle, registry, calendar, build_id
         )
         validations += schedule_issues
         validations += validate_fixing_conservation(fixing_events, trade_events, build_id)
-        validations += validate_required_fixing_prices(fixing_events, bundle, build_id)
+        validations += validate_required_fixing_prices(fixing_events, calculation_bundle, build_id)
         if has_errors(validations):
             return _failed_result(
                 bundle=bundle,
@@ -223,9 +243,11 @@ def build(bundle: InputBundle) -> BuildResult:
             )
 
         unpriced_exposure = build_unpriced_exposure(
-            bundle, registry, calendar, fixing_events, trade_events
+            calculation_bundle, registry, calendar, fixing_events, trade_events
         )
-        validations += validate_required_curve_prices(bundle, registry, unpriced_exposure, build_id)
+        validations += validate_required_curve_prices(
+            calculation_bundle, registry, unpriced_exposure, build_id
+        )
         if has_errors(validations):
             return _failed_result(
                 bundle=bundle,
@@ -238,11 +260,40 @@ def build(bundle: InputBundle) -> BuildResult:
                 stage="Exposure",
             )
 
-        fixings = price_fixings(fixing_events, bundle, build_id)
-        exposure = price_exposure(unpriced_exposure, bundle, build_id)
-        initial_mtm = opening_mtms(bundle, registry)
+        fixings = price_fixings(fixing_events, calculation_bundle, build_id)
+        exposure = price_exposure(unpriced_exposure, calculation_bundle, build_id)
+        fx_requirements = {(row.market_date, row.currency) for row in exposure if row.exposure_mtm}
+        fx_requirements.update(
+            (row.fixing_date, row.currency)
+            for row in fixings
+            if row.fixing_amount
+            and (
+                (profile := registry.underlying(row.source_underlying)) is not None
+                and profile.include_fixing_in_pnl
+            )
+        )
+        fx_requirements.update(
+            (row.applied_market_date, profile.currency)
+            for row in trade_events
+            if row.applied_market_date is not None
+            and (profile := registry.underlying(row.source_underlying)) is not None
+            and row.signed_volume
+        )
+        validations += validate_fx_requirements(calculation_bundle, fx_requirements, build_id)
+        if has_errors(validations):
+            return _failed_result(
+                bundle=bundle,
+                run_id=run_id,
+                build_id=build_id,
+                fingerprint=fingerprint,
+                started_at=started_at,
+                validations=validations,
+                peak_memory=max(peak_memory, current_memory_bytes()),
+                stage="FX",
+            )
+        initial_mtm = opening_mtms(calculation_bundle, registry)
         pnl, cumulative = build_pnl(
-            bundle,
+            calculation_bundle,
             registry,
             calendar,
             exposure,
@@ -252,7 +303,9 @@ def build(bundle: InputBundle) -> BuildResult:
             initial_mtm,
             build_id,
         )
-        validations += validate_output_invariants(fixings, exposure, pnl, build_id)
+        validations += validate_output_invariants(
+            calculation_bundle, fixings, exposure, pnl, build_id
+        )
         if has_errors(validations):
             return _failed_result(
                 bundle=bundle,
@@ -266,7 +319,7 @@ def build(bundle: InputBundle) -> BuildResult:
             )
 
         validations = _ordered_validations(validations)
-        ledger = _event_ledger(bundle, registry, fixing_events, trade_events)
+        ledger = _event_ledger(calculation_bundle, registry, fixing_events, trade_events)
         finished_at = datetime.now(zone)
         peak_memory = max(peak_memory, current_memory_bytes())
         manifest = make_manifest(

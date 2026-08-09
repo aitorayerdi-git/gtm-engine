@@ -14,6 +14,10 @@ Install these before cloning the repository:
 Microsoft Excel is optional. You need Excel, or another compatible `.xlsx` editor, only to edit
 and view the Excel interface. The Python engine does not start Excel and does not run macros.
 
+On Windows, installation also supplies the IANA timezone database used for the configured
+`Europe/Madrid` build timezone. This is declared as a Windows-only package dependency; no manual
+timezone-package installation is required.
+
 Check Python before continuing:
 
 ```sh

@@ -29,6 +29,8 @@ and implementation history.
   same-month forward column.
 - Excel output tables no longer create the table/AutoFilter corruption reported by Microsoft
   Excel.
+- Windows installations now include the `tzdata` runtime dependency required to resolve the
+  configured `Europe/Madrid` timezone.
 
 ### Known acceptance items
 

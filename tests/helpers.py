@@ -11,6 +11,7 @@ from gtm_engine.models import (
     CurvePrice,
     FixingMethod,
     FixingPrice,
+    FxRate,
     InitialExposure,
     InitialPnl,
     InputBundle,
@@ -57,16 +58,20 @@ def underlying(
     price_basis: PriceDateBasis = PriceDateBasis.FIXING_DATE,
     current_month_uses_next_curve: bool = False,
     unit: str = "MWh",
+    currency: str = "EUR",
+    include_fixing_in_pnl: bool = True,
 ) -> UnderlyingConfig:
     return UnderlyingConfig(
         source_underlying=name,
         canonical_underlying=canonical or name,
         fixing_method=method,
         unit=unit,
+        currency=currency,
         curve_underlying=curve_underlying,
         fixing_price_underlying=fixing_price_underlying,
         fixing_price_basis=price_basis,
         current_month_uses_next_curve=current_month_uses_next_curve,
+        include_fixing_in_pnl=include_fixing_in_pnl,
     )
 
 
@@ -177,6 +182,22 @@ def with_prices(
                         source_as_of=datetime(2026, 1, 1, tzinfo=UTC),
                     )
                 )
+    currencies = {row.currency for row in bundle.underlyings if row.currency != "EUR"}
+    fx_rates = tuple(
+        FxRate(
+            rate_date=calendar_day.date,
+            currency=currency,
+            currency_per_eur=D("1.2"),
+            source_id=f"FX-{calendar_day.date}-{currency}",
+        )
+        for calendar_day in bundle.calendar
+        if calendar_day.is_market_day
+        for currency in sorted(currencies)
+    )
     return bundle.model_copy(
-        update={"fixing_prices": tuple(fixing_prices), "curve_prices": tuple(curve_prices)}
+        update={
+            "fixing_prices": tuple(fixing_prices),
+            "curve_prices": tuple(curve_prices),
+            "fx_rates": fx_rates,
+        }
     )

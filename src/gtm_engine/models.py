@@ -103,6 +103,7 @@ class UnderlyingConfig(StrictModel):
     curve_underlying: str | None = Field(default=None, validate_default=True)
     fixing_price_underlying: str | None = Field(default=None, validate_default=True)
     fixing_price_basis: PriceDateBasis = PriceDateBasis.FIXING_DATE
+    include_fixing_in_pnl: bool = True
     active: bool = True
     current_month_uses_next_curve: bool = False
 
@@ -165,6 +166,21 @@ class Trade(StrictModel):
         return self.daily_qty if self.side is Side.BUY else -self.daily_qty
 
 
+class DeliveryElection(StrictModel):
+    decision_date: date
+    book: str
+    underlying: str
+    side: Side
+    start_date: date
+    end_date: date
+    delivery_daily_qty: Decimal
+    unit: str
+    trade_source: TradeSource = TradeSource.ACTUAL
+    scenario: str | None = None
+    source_row_id: str
+    comment: str | None = None
+
+
 class CurvePrice(StrictModel):
     market_date: date
     underlying: str
@@ -193,6 +209,14 @@ class FixingPrice(StrictModel):
     source_as_of: datetime | None = None
 
 
+class FxRate(StrictModel):
+    rate_date: date
+    currency: str
+    currency_per_eur: Decimal
+    source_id: str
+    source_as_of: datetime | None = None
+
+
 class OperatingFlow(StrictModel):
     market_date: date
     book: str
@@ -210,8 +234,10 @@ class InputBundle(StrictModel):
     initial_exposure: tuple[InitialExposure, ...]
     initial_pnl: tuple[InitialPnl, ...]
     trades: tuple[Trade, ...] = ()
+    delivery_elections: tuple[DeliveryElection, ...] = ()
     curve_prices: tuple[CurvePrice, ...] = ()
     fixing_prices: tuple[FixingPrice, ...] = ()
+    fx_rates: tuple[FxRate, ...] = ()
     operating_flows: tuple[OperatingFlow, ...] = ()
     input_hashes: dict[str, str] = Field(default_factory=dict)
 
@@ -275,6 +301,7 @@ class FixingRow(StrictModel):
     fixing_volume: Decimal
     fixing_price: Decimal
     fixing_amount: Decimal
+    currency: str
     trade_source: TradeSource
     scenario: str | None
     simulation_status: SimulationStatus
@@ -291,6 +318,7 @@ class ExposureRow(StrictModel):
     exposure_volume: Decimal
     curve_price: Decimal | None
     exposure_mtm: Decimal
+    currency: str
     trade_source: TradeSource
     scenario: str | None
     simulation_status: SimulationStatus

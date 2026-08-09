@@ -221,6 +221,7 @@ def validate_bundle(bundle: InputBundle, build_id: str) -> tuple[ValidationItem,
         ("initial_exposure", bundle.initial_exposure),
         ("initial_pnl", bundle.initial_pnl),
         ("trades", bundle.trades),
+        ("delivery_elections", bundle.delivery_elections),
         ("operating_flows", bundle.operating_flows),
     ):
         source_ids = [row.source_row_id for row in rows]

@@ -51,8 +51,10 @@ def calculation_fingerprint(bundle: InputBundle) -> str:
         "initial_exposure",
         "initial_pnl",
         "trades",
+        "delivery_elections",
         "curve_prices",
         "fixing_prices",
+        "fx_rates",
         "operating_flows",
     ):
         payload[field] = sorted(payload[field], key=canonical_json)

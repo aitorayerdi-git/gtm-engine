@@ -85,7 +85,7 @@ def test_excel_template_round_trip_contract_and_setup_mapping(tmp_path: Path) ->
     mapping = Path("docs/GTM_ACTIVE_SETUP_MAPPING_v0.3.csv")
     books, underlyings = load_setup_mapping(mapping)
     assert len(books) == 13
-    assert len(underlyings) == 18
+    assert len(underlyings) == 17
 
     original = _economic_bundle()
     interface = create_excel_template(tmp_path / "interface.xlsx", bundle=original)

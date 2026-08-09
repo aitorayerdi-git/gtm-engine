@@ -2361,3 +2361,288 @@ as the current major; checkout v5 and setup-python v6 introduced Node 24, while 
 current action internals and usage examples. The workflow was therefore updated to
 `actions/checkout@v7` and `actions/setup-python@v7`. It retains explicit `contents: read`
 permissions and the fixed Python 3.13 target.
+
+## 2026-08-08 — Windows timezone dependency corrected
+
+The first automated gate in a newly installed Windows checkout exposed a packaging omission.
+Python's `zoneinfo` could not resolve the configured `Europe/Madrid` timezone because Windows does
+not normally provide an IANA timezone database and the project did not declare the PyPI `tzdata`
+fallback. Builds failed at pipeline timestamp initialization with `ZoneInfoNotFoundError`; this
+was an installation defect, not an economic-engine failure.
+
+`pyproject.toml` now declares `tzdata>=2026.1,<2027` for `sys_platform == 'win32'`. The platform
+marker avoids installing redundant timezone data on systems that normally provide the IANA
+database. `INSTALL.md` and `CHANGELOG.md` record the Windows behavior.
+
+After installing `tzdata 2026.3`, the complete Windows gate passed:
+
+```text
+Ruff format check: 28 files already formatted
+Ruff lint: all checks passed
+mypy strict: no issues in 16 source files
+pytest: 49 passed, 1 skipped in 41.12 seconds
+coverage: 87.93% (gate: 85%)
+pip check: no broken requirements
+```
+
+The project was reinstalled from the corrected editable metadata before this final gate; pip
+resolved `tzdata 2026.3` as a runtime requirement and reported no broken dependencies. The skipped
+test remains the intentional private legacy-workbook inventory test. The longer test runtime
+reflects the managed Windows execution environment and coverage instrumentation.
+
+## 2026-08-08 — Standalone Daily Report D2 verification workbook generated
+
+The policy-normalized verification input was rebuilt with status `PUBLISHED`, Build ID
+`GTM3-B924E63617A0D7D1ADF6`, zero validation errors, and the 12 expected deliberate-zero-quantity
+warnings. The authoritative Python result selected D1 9 July 2026 and D2 10 July 2026.
+
+A standalone, local-only workbook was written to
+`verification/GTM_Daily_Report_D2_2026-07-10.xlsx`. It contains only the generated
+`Daily Report D2` sheet, with 108 rows, 11 columns, and no formulas. Section 1 reconciles to D2
+Total P&L of `EUR -560,886.7748471264`. The source input
+`verification/GTM_Run_Input_Zero_Price_Policy.xlsx` remained unchanged and does not contain the
+report sheet. The generated `.xlsx` remains excluded from Git under the repository data policy.
+
+## 2026-08-08 — Daily Delta P&L matrix by Market Date and BOOK generated
+
+A second standalone, local-only verification workbook was generated from the published
+`GTM3-B924E63617A0D7D1ADF6` cumulative P&L output:
+`verification/GTM_Delta_PnL_by_Market_Date_and_BOOK.xlsx`.
+
+The workbook contains one sheet, `Delta PnL by BOOK`, with Market Date in the first column and the
+13 active BOOKS in the remaining columns. Its eight data rows cover the configured Market Dates
+from 1 July through 10 July 2026. Each cell is the engine's daily Total P&L aggregated by Market
+Date and BOOK; absent movements are displayed as explicit zeroes. The sheet contains no formulas
+and includes a frozen date column/header, filters, monetary formatting, and a red/white/green
+value scale.
+
+The matrix total is `EUR 4,644,118.310609552378243818915`. It reconciles to the sum of
+`pnl.csv.total_pnl`, `EUR 4,644,118.310609552378243818913`; the residual is below representable
+economic significance and far inside the approved EUR 0.01 P&L tolerance. The output workbook's
+SHA-256 is `5c37954cdb737004027837bd108a0182d03f87b7e39fa01553afd51b2369c6dc` and the file remains
+excluded from Git under the repository data policy.
+
+## 2026-08-09 — Initial workbook D2 diagnostic comparison for 9/10 July 2026
+
+The local-only workbook `verification/Gas_Trading_Model 070826.xlsm` was inspected read-only at
+the user's request. Its SHA-256 is
+`bdb1e3870f38437b2d464ea3c3feb89931e31ad4a8deadda44f98c777ce614d7`. No macro, formula
+recalculation, link update, external refresh, or save was performed. The workbook was treated as
+diagnostic evidence only, not as an acceptance oracle.
+
+The saved workbook does not contain one coherent legacy result for D1 9 July and D2 10 July:
+
+- `Daily Report D2` is stale at D1 30 June / D2 1 July;
+- `Daily Delta PnL` contains no values or formulas;
+- the cached `DAILY PNL` row for 10 July is zero in every component and BOOK;
+- `DAILY PNL DATA`, refreshed 20 July, contains a 10 July total of
+  `EUR 4,706.789812054237`;
+- `PNL DATA`, refreshed 3 August, contains a different 10 July total of
+  `EUR 417,286.513907052471`.
+
+Against the published Python result `GTM3-B924E63617A0D7D1ADF6`, whose 10 July Total P&L is
+`EUR -560,886.774847126509`, the older `DAILY PNL DATA` snapshot differs by
+`EUR +565,593.564659180746`. Its component comparison is:
+
+```text
+Component                   Python                 DAILY PNL DATA       Legacy - Python
+Delta Exposure MtM          -78,104.748039826863   -10,867.120800000736  +67,237.627239826127
+Economic Fixing Amount     -495,386.477419354774         0.000000000000 +495,386.477419354774
+Logistical Costs             -1,484.729999999923    +1,484.729999999923   +2,969.459999999846
+Fees and Optimizations       +8,063.360740000004    +8,063.360740000004        0
+Replication                  +6,025.819872055047    +6,025.819872055047        0
+```
+
+The newer `PNL DATA` layer is structurally closer to Python. Its adjusted Exposure differs only
+by `EUR +3.058248294`, entirely from Brent Dated, which the temporary run policy sets explicitly
+to zero. Its Fixing Amount is `EUR +495,388.203698590195`: it uses the raw settlement sign instead
+of the inverse economic P&L sign and also includes `EUR +1.726279235` of Brent that is zero under
+the temporary policy. It contains no Logistics, Fees/Optimizations, or Replication rows.
+
+The older `DAILY PNL DATA` exposure snapshot is not simply Python before trade-entry adjustment;
+it differs materially from Python gross Exposure by BOOK. It includes BOOK movements absent from
+the normalized build and omits others, consistent with the previously documented incomplete
+formula architecture and stale/incoherent build generations. Its Fixing component is wholly
+absent. Fees and Replication agree exactly with Python, while Logistics has the opposite sign;
+the source `COSTS` row for 10 July stores positive costs totalling `EUR 1,484.73` and still carries
+the workbook note `CONFIRMAR SIGNO CON OPS`.
+
+Conclusion: the differences are not one unexplained calculation residual. They are the combined
+effect of stale report dates, disconnected calculation generations, missing legacy fixing P&L,
+raw-versus-economic fixing sign, omission of operating flows in v2, the explicit temporary
+Brent/HH zero-price policy, the unresolved Logistics sign, and materially different older
+Exposure populations. No legacy layer can be accepted as the expected result without first
+selecting and repairing a coherent methodology path.
+
+## 2026-08-09 — Test 1 fixing-methodology input created
+
+A local-only validation workbook was created at `verification/Input test fixing.xlsx` to begin a
+simple business review of fixing behavior across every active underlying. It uses Initial Market
+Date 30 December 2025, Historical Start Date 31 December 2025, and Historical End Date 10 July
+2026. Initial Exposure is empty and Initial P&L contains one required zero row for each of the 13
+active BOOKS. Operating flows are empty so the eventual result isolates trade, fixing, exposure,
+and trade-entry effects.
+
+The workbook contains one ACTUAL BUY trade in BOOK `CGTO` for each of the 18 active source
+underlyings. Every trade has Trade Date 31 December 2025, delivery from 1 January through
+31 December 2026, and execution price 100 in the configured price contract. The 16 EUR/MWh gas
+underlyings use Daily Qty 10; Brent Dated and HH use deliberate zero quantities pending a separate
+USD and unit-specific test. The calendar, fixing-price table, and curve-price table were copied
+unchanged from `GTM_Run_Input_Zero_Price_Policy.xlsx`.
+
+The generated workbook was loaded back through the strict Excel adapter. It contains 18 trades
+(16 material), 13 zero Initial P&L rows, 1,097 calendar rows, 590 fixing-price rows, and 2,376
+curve-price rows. The three copied market-data tables compare exactly with the source bundle.
+
+An in-memory preflight diagnostic established that the unchanged fixing-price table does not
+cover all required lookup keys from January through 10 July 2026 for these full-year trades. The
+current test therefore fails closed with missing-fixing-price validation rather than producing
+economic output. No missing price was synthesized or silently replaced. Before generating the
+test output, the business test must either provide an approved synthetic fixing-price grid for
+the required dates or narrow the trade and historical horizon to the available price coverage.
+
+## 2026-08-09 — Test 1 fixing, P&L eligibility, and FX policy implemented
+
+Business clarification separated the fixing schedule from its P&L recognition. Every material
+fixing closes Exposure according to the configured methodology. Daily products retrieve their
+price by Delivery Day. Month Ahead allocates the monthly delivery volume across eligible Fixing
+Dates in the preceding month and retrieves a distinct price for each tranche's Fixing Date.
+
+The underlying contract now declares whether raw fixing settlement enters P&L. TTF DA, Brent
+Dated, HH, PVB Heren DA, and PVB Heren DA (Delivery) are included for Test 1. Other products retain
+informative non-zero synthetic fixing prices but contribute zero fixing P&L because their economics
+will be supplied through Replication P&L. This prevents the previous zero-price convention from
+hiding whether the correct price key was selected.
+
+An FX input table was added. Rates are currency units per EUR, with exact-date or latest-prior
+lookup and fail-closed validation. Brent Dated remains bbl and USD/bbl; HH remains MMBtu and
+USD/MMBtu. Raw fixing and Exposure amounts remain USD. Fixing P&L converts at EURUSD spot on Fixing
+Date, Exposure MtM at Market Date, and trade-entry adjustment at applied Market Date.
+
+`verification/Input test fixing.xlsx` was regenerated with 18 BUY trades in CGTO, Daily Qty 10,
+delivery 1 January through 31 December 2026, 6,606 synthetic fixing prices, 15,678 curve prices,
+and 134 EURUSD observations fixed at 1.20 USD/EUR. The source calendar was retained and extended
+only with 30 December 2025, required as the previous Market Date for the first 31 December output.
+The strict Excel round trip and in-memory build completed `VERIFIED` with zero errors, warnings, or
+information items, producing 11,011 fixing rows, 10,985 Exposure rows, and 10,986 P&L rows. The
+final user-designed output workbook has not yet been generated.
+
+The final repository gate passed on Windows: Ruff format and lint passed, mypy strict reported no
+issues in 17 source files, pytest completed with 51 passed and 1 intentional private-workbook
+skip, coverage was 88.02% against the 85% gate, and pip reported no broken requirements.
+
+## 2026-08-09 — Test 1 fixing validation output generated
+
+The local-only workbook `verification/output test fixing.xlsx` was generated from the verified
+Test 1 input. `Fixing volume by fixing date` contains every calendar date from 31 December 2025
+through 10 July 2026 and aggregates fixing volume by source underlying. `Fixing PnL by fixing
+date` uses the same 192-day axis and reports economic fixing P&L in EUR on Fixing Date, including
+explicit zeroes for products excluded from fixing P&L.
+
+`Fixing PnL by market date` contains the 133 configured Market Dates in the same period and moves
+each economic fixing contribution to its applied Market Date. All three matrices preserve the 18
+source underlyings as separate columns. The fixing-date and market-date P&L matrices both total
+EUR 460,920, proving that deferral to Market Date changes timing presentation but neither loses nor
+duplicates fixing P&L. The workbook contains values only and remains excluded from Git.
+
+## 2026-08-09 — Test 1 regenerated without delivery volume
+
+The definitive `verification/Input test fixing.xlsx` and
+`verification/output test fixing.xlsx` workbooks were overwritten after adding the explicit
+delivery-election contract. The input retains the same 18 trade rows and contains no delivery
+elections. The existing `PVB Heren DA (Delivery)` trade is retained with Daily Qty zero; the new
+`TTF DA (Delivery)` product is derived only through delivery elections and therefore has no direct
+trade row.
+
+TTF DA and PVB Heren DA base fixing prices are zero. Their `(Delivery)` price series remain
+available for future elected delivery volume, but neither contributes volume or P&L in this run.
+The strict build completed `VERIFIED` with zero errors and one expected zero-quantity warning.
+Both delivery columns total exactly zero in all three output matrices. The output contains 192
+calendar dates in each Fixing Date sheet, 133 Market Dates in the Market Date sheet, and all 19
+active source-underlying columns.
+
+## 2026-08-09 — Delivery categories removed from authoritative inputs
+
+The physical-delivery design was simplified following business review. `TTFDA Heren` and
+`PVB Heren` are now the only authoritative source products for this methodology in UNDERLYINGS,
+TRADES, and FIXING PRICES. Their fixing-price series contain the real Delivery Day prices (50 and
+70 respectively in Test 1); zero prices are no longer used to control P&L eligibility.
+
+`TTFDA Delivery` and `PVB Heren Delivery` now exist only as engine-derived reporting categories.
+An approved DELIVERY ELECTION splits the applicable daily source volume internally, and the
+delivery leg reuses its base product's fixing-price series. The non-delivery leg remains excluded
+from fixing P&L for recognition through Replication P&L, while the elected delivery leg contributes
+fixing P&L.
+
+The definitive Test 1 input and output workbooks were overwritten. The input contains 17 trades,
+17 configured source underlyings, no delivery trades, no delivery fixing-price rows, and no
+delivery elections. The strict build completed `VERIFIED` with zero errors, warnings, or
+information items. Both derived delivery columns appear in all three output matrices and total
+exactly zero for the current no-delivery test.
+
+## 2026-08-09 — Full July 2026 delivery scenario created
+
+Two additional local-only workbooks were created without replacing the no-delivery baseline:
+`verification/Input test fixing delivery Jul26.xlsx` and
+`verification/output test fixing delivery Jul26.xlsx`. All authoritative inputs remain identical
+to the baseline except for two DELIVERY ELECTIONS decided on 30 June 2026. Each election assigns
+the full BUY volume of 10 MWh/day in BOOK CGTO from 1 through 31 July 2026 to delivery, one for
+`TTFDA Heren` and one for `PVB Heren`.
+
+The generated Excel input was reopened through the strict adapter and rebuilt successfully. The
+run completed `VERIFIED` with zero errors, warnings, or information items. Through the Historical
+End Date of 10 July, the schedules contain 130 MWh of fixing volume in each derived delivery
+category because 13 July delivery days have fixed by that cutoff. The report shows EUR 6,500 of
+TTFDA Delivery fixing P&L and EUR 9,100 of PVB Heren Delivery fixing P&L; both base-product fixing
+P&L columns remain zero. The full test suite passed with 52 tests and one intentional private
+legacy-workbook skip.
+
+## 2026-08-09 — Fixing report Excel table repair
+
+Excel Desktop reported a recovery operation on the three fixing-report tables. The report writer
+had assigned an AutoFilter to each worksheet range and then added an Excel Table over the same
+range, whose table definition carries its own AutoFilter. OpenPyXL accepted the overlapping
+definitions, but Excel removed the tables during recovery.
+
+The redundant worksheet-level AutoFilter was removed from the generator. Both
+`output test fixing.xlsx` and `output test fixing delivery Jul26.xlsx` were regenerated and
+overwritten without changing their calculated values. Package-level verification confirms that
+each workbook contains exactly three table parts, one table per worksheet, and no overlapping
+worksheet-level AutoFilter definitions.
+
+## 2026-08-09 — Exposure validation report created
+
+The latest full-July-delivery input was processed into a separate local-only workbook,
+`verification/output test fixing exposure Jul26.xlsx`; no existing input or output was
+overwritten. The original three fixing matrices remain present.
+
+`Exposure data` adds 10,986 auditable product-level rows with Market Date, Previous Market Date,
+BOOK, canonical Underlying, Delivery Month, Trade Source, Scenario, Exposure Volume, Curve Price,
+Exposure MtM, Gross Delta Exposure MtM, Trade Entry Adjustment, final Delta Exposure MtM,
+Currency, explicit-closure flag, and Build ID. It is stored as a native Excel table suitable for
+filtering and pivot analysis.
+
+`Exposure by Market Date` and `Delta Exposure MtM` provide yellow dropdown selectors for Market
+Date and BOOK. Their formulas aggregate the detail table by canonical Underlying. The exposure
+view shows both volume and MtM. The delta view shows Gross Delta Exposure MtM, Trade Entry
+Adjustment, and their final Delta Exposure MtM result. The workbook uses hidden, named validation
+ranges and requests a full automatic Excel recalculation on open.
+
+Package verification confirmed four valid table parts, no overlapping worksheet/table filters,
+valid selector formulas, two dropdowns per dynamic sheet, and exact detail-row reconciliation with
+the verified engine result. The transient Windows temporary-directory failure in the full test run
+was rerun at the affected test level and passed.
+
+## 2026-08-09 — Exposure selector views changed to delivery-month matrices
+
+The two interactive exposure views were revised after business review. Both retain the yellow
+Market Date and BOOK selectors. Their result area is now a matrix whose first column contains all
+36 Delivery Months from January 2026 through December 2028 and whose remaining columns contain the
+nine canonical underlyings present in the verified engine result.
+
+`Exposure by Market Date` reports Exposure Volume for each Delivery Month and Underlying.
+`Delta Exposure MtM` reports the final P&L component named Delta Exposure MtM for the same matrix.
+The underlying detail table still retains Exposure MtM, Gross Delta Exposure MtM, and Trade Entry
+Adjustment for audit and reconciliation. Formula, dropdown, date-boundary, table-package, and
+workbook-reload checks passed on the definitive
+`verification/output test fixing exposure Jul26.xlsx` file.

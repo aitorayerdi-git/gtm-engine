@@ -10,6 +10,7 @@ from .calendar import CalendarIndex
 from .canonicalize import Registry
 from .decimal_utils import ZERO
 from .exposure import ExposureKey
+from .fx import FxIndex
 from .models import (
     CumulativePnlRow,
     ExposureRow,
@@ -22,6 +23,9 @@ from .models import (
 
 
 def trade_entry_adjustments(
+    bundle: InputBundle,
+    registry: Registry,
+    fx: FxIndex,
     trade_events: tuple[TradeEvent, ...],
     fixing_events: tuple[FixingEvent, ...],
 ) -> dict[tuple[date, ExposureKey], Decimal]:
@@ -54,8 +58,13 @@ def trade_entry_adjustments(
             trade_event.trade_source,
             trade_event.scenario,
         )
-        adjustments[(trade_event.applied_market_date, key)] += (
-            -open_volume * trade_event.execution_price
+        profile = registry.underlying(trade_event.source_underlying)
+        if profile is None:
+            continue
+        adjustments[(trade_event.applied_market_date, key)] += fx.to_eur(
+            -open_volume * trade_event.execution_price,
+            profile.currency,
+            trade_event.applied_market_date,
         )
     return dict(adjustments)
 
@@ -71,6 +80,7 @@ def build_pnl(
     initial_mtm: dict[ExposureKey, Decimal],
     build_id: str,
 ) -> tuple[tuple[PnlRow, ...], tuple[CumulativePnlRow, ...]]:
+    fx = FxIndex(bundle.fx_rates)
     exposure_by_date: dict[tuple[date, ExposureKey], ExposureRow] = {}
     keys_by_date: dict[date, set[ExposureKey]] = defaultdict(set)
     for exposure_row in exposure:
@@ -95,13 +105,26 @@ def build_pnl(
         )
         # Fixing output preserves the signed exposure-closing settlement:
         # fixing_volume * fixing_price. P&L consumes the opposite cash-flow sign.
-        economic_fixing_amounts[(fixing_row.applied_market_date, key)] -= fixing_row.fixing_amount
+        profile = registry.underlying(fixing_row.source_underlying)
+        if profile is not None and profile.include_fixing_in_pnl:
+            economic_fixing_amounts[(fixing_row.applied_market_date, key)] -= fx.to_eur(
+                fixing_row.fixing_amount,
+                fixing_row.currency,
+                fixing_row.fixing_date,
+            )
         keys_by_date[fixing_row.applied_market_date].add(key)
 
-    adjustments = trade_entry_adjustments(trade_events, fixing_events)
+    adjustments = trade_entry_adjustments(bundle, registry, fx, trade_events, fixing_events)
     for adjustment_date, adjustment_key in adjustments:
         keys_by_date[adjustment_date].add(adjustment_key)
-    prior_mtm = dict(initial_mtm)
+    prior_mtm: dict[ExposureKey, Decimal] = {}
+    for key, value in initial_mtm.items():
+        profile = registry.underlying(key[1])
+        prior_mtm[key] = fx.to_eur(
+            value,
+            profile.currency if profile is not None else "EUR",
+            bundle.config.initial_market_date,
+        )
     pnl_rows: list[PnlRow] = []
 
     for market_date in calendar.output_market_dates:
@@ -112,7 +135,15 @@ def build_pnl(
             key=lambda value: (value[0], value[1], value[2], value[3].value, value[4] or ""),
         ):
             current_exposure = exposure_by_date.get((market_date, key))
-            current_mtm = current_exposure.exposure_mtm if current_exposure is not None else ZERO
+            current_mtm = (
+                fx.to_eur(
+                    current_exposure.exposure_mtm,
+                    current_exposure.currency,
+                    current_exposure.market_date,
+                )
+                if current_exposure is not None
+                else ZERO
+            )
             gross_delta = current_mtm - prior_mtm.get(key, ZERO)
             adjustment = adjustments.get((market_date, key), ZERO)
             delta_exposure = gross_delta + adjustment

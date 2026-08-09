@@ -344,6 +344,56 @@ Required normalized fields:
 Economic key: `price_lookup_date + underlying`. Fixing output and event lineage preserve Fixing
 Date, Delivery Day, and Delivery Month. Their relationship to `price_lookup_date` remains explicit.
 
+For `WITHINDAY`, `DAY_AHEAD`, `HEREN`, and `BRENT_HH`, `price_lookup_date` SHALL equal Delivery
+Day. Fixing Date determines when volume closes in Exposure; it does not select the product price.
+For `MONTH_AHEAD`, the monthly volume SHALL be allocated equally across the eligible market-day
+Fixing Dates of the preceding month and each tranche SHALL use the price of its own Fixing Date.
+The final allocation absorbs any Decimal remainder so scheduled volume is conserved exactly.
+
+The underlying configuration SHALL state whether its raw fixing settlement is recognized in P&L.
+An excluded fixing still closes Exposure and retains its observed price and native-currency amount;
+its fixing contribution to P&L is zero because the economics are recognized in Replication P&L.
+
+### 7.8.1 Foreign-exchange rates
+
+The FX input SHALL provide dated observations as currency units per EUR. EUR requires no input
+rate. A native-currency amount is converted as `amount_native / currency_per_eur`. The engine uses
+the observation on the required date or the latest prior observation and fails closed if neither
+exists or the rate is non-positive.
+
+Brent Dated volumes are bbl and prices are USD/bbl; HH volumes are MMBtu and prices are USD/MMBtu.
+Their raw fixing and Exposure amounts therefore remain USD. Fixing P&L uses EURUSD spot on Fixing
+Date (or the latest prior observation), while Exposure MtM uses EURUSD on Market Date and the
+trade-entry adjustment uses EURUSD on its applied Market Date. P&L output is expressed in EUR.
+
+### 7.8.2 Physical-delivery elections
+
+`TTFDA Heren` and `PVB Heren` SHALL be the only selectable source products in trades, underlying
+configuration, and fixing-price input. Before a delivery
+month starts, an authorized election MAY assign an explicit daily BUY or SELL magnitude to physical
+delivery for one or more non-overlapping date ranges within that month. Required fields are
+Decision Date, BOOK, base Underlying, Side, Start Date, End Date, Delivery Daily Qty, Unit, Trade
+Source, Scenario, Source Row ID, and optional Comment.
+
+Each range SHALL remain within one calendar month and Decision Date SHALL precede the first day of
+that month. Daily Qty is a non-negative magnitude; Side supplies its sign. The election SHALL NOT
+exceed the available same-side daily source-trade volume for the same BOOK, base Underlying, Trade
+Source, and Scenario. Overlapping election ranges for the same economic key SHALL fail preflight.
+
+The engine SHALL split source volume deterministically before scheduling fixings. Elected volume is
+assigned internally to the derived reporting categories `TTFDA Delivery` or `PVB Heren Delivery`,
+and the remainder stays in the base product. The derived categories SHALL NOT be accepted in
+trades, underlying configuration, or fixing-price input. When multiple same-side trades are
+available, delivery volume is allocated pro rata and
+the final deterministic row absorbs any Decimal remainder. For every source position and Delivery
+Day, base plus delivery volume SHALL equal the original volume exactly.
+
+Each base product has one real, non-zero-capable fixing-price series keyed by Delivery Day. The
+non-delivery portion does not contribute fixing P&L because its economics are recognized through
+Replication P&L. The elected delivery portion reuses the same base price series and contributes
+fixing P&L under its derived reporting category. All three fixing-test report matrices SHALL include
+both derived delivery columns, including explicit zeroes when no delivery volume is elected.
+
 ### 7.9 Operating flows
 
 The target engine SHALL consume direct normalized operating flows rather than copying legacy P&L output.

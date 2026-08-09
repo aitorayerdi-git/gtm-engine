@@ -49,6 +49,15 @@ def _price_lookup_date(
     return delivery_day if basis is PriceDateBasis.DELIVERY_DAY else fixing_date
 
 
+def _price_basis(method: FixingMethod) -> PriceDateBasis:
+    """Daily products price by delivery day; Month Ahead prices each fixing tranche."""
+    return (
+        PriceDateBasis.FIXING_DATE
+        if method is FixingMethod.MONTH_AHEAD
+        else PriceDateBasis.DELIVERY_DAY
+    )
+
+
 def _fixing_event(
     *,
     calendar: CalendarIndex,
@@ -180,7 +189,7 @@ def build_schedules(
                             source_underlying=underlying_row.source_underlying,
                             canonical_underlying=underlying_row.canonical_underlying,
                             pricing_underlying=underlying_row.fixing_price_underlying or "",
-                            basis=underlying_row.fixing_price_basis,
+                            basis=_price_basis(underlying_row.fixing_method),
                             delivery_month=position.delivery_month,
                             delivery_day=delivery_day,
                             fixing_date=fixing_date,
@@ -230,7 +239,7 @@ def build_schedules(
                     source_underlying=underlying_row.source_underlying,
                     canonical_underlying=underlying_row.canonical_underlying,
                     pricing_underlying=underlying_row.fixing_price_underlying or "",
-                    basis=underlying_row.fixing_price_basis,
+                    basis=_price_basis(underlying_row.fixing_method),
                     delivery_month=position.delivery_month,
                     delivery_day=delivery_day,
                     fixing_date=fixing_date,
@@ -311,7 +320,7 @@ def build_schedules(
                                 source_underlying=underlying_row.source_underlying,
                                 canonical_underlying=underlying_row.canonical_underlying,
                                 pricing_underlying=underlying_row.fixing_price_underlying or "",
-                                basis=underlying_row.fixing_price_basis,
+                                basis=_price_basis(underlying_row.fixing_method),
                                 delivery_month=delivery_month,
                                 delivery_day=delivery_day,
                                 fixing_date=fixing_date,
@@ -339,7 +348,7 @@ def build_schedules(
                         source_underlying=underlying_row.source_underlying,
                         canonical_underlying=underlying_row.canonical_underlying,
                         pricing_underlying=underlying_row.fixing_price_underlying or "",
-                        basis=underlying_row.fixing_price_basis,
+                        basis=_price_basis(underlying_row.fixing_method),
                         delivery_month=delivery_month,
                         delivery_day=delivery_day,
                         fixing_date=fixing_date,
@@ -513,6 +522,7 @@ def price_fixings(
                 fixing_volume=volume,
                 fixing_price=price.fixing_price,
                 fixing_amount=volume * price.fixing_price,
+                currency=price.currency,
                 trade_source=event.trade_source,
                 scenario=event.scenario,
                 simulation_status=bundle.config.simulation_status,

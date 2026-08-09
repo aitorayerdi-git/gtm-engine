@@ -6,11 +6,14 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
+from .canonicalize import Registry
 from .decimal_utils import VOLUME_TOLERANCE, ZERO
+from .fx import FxIndex
 from .models import (
     ExposureRow,
     FixingEvent,
     FixingRow,
+    InputBundle,
     PnlRow,
     Severity,
     TradeEvent,
@@ -56,12 +59,15 @@ def validate_fixing_conservation(
 
 
 def validate_output_invariants(
+    bundle: InputBundle,
     fixings: tuple[FixingRow, ...],
     exposure: tuple[ExposureRow, ...],
     pnl: tuple[PnlRow, ...],
     build_id: str,
 ) -> tuple[ValidationItem, ...]:
     issues: list[ValidationItem] = []
+    registry = Registry.from_bundle(bundle)
+    fx = FxIndex(bundle.fx_rates)
     exposure_keys = [
         (
             row.market_date,
@@ -113,6 +119,9 @@ def validate_output_invariants(
 
     economic_fixing_by_key: dict[tuple[object, ...], Decimal] = defaultdict(lambda: ZERO)
     for fixing_row in fixings:
+        profile = registry.underlying(fixing_row.source_underlying)
+        if profile is None or not profile.include_fixing_in_pnl:
+            continue
         key = (
             fixing_row.applied_market_date,
             fixing_row.book,
@@ -121,7 +130,11 @@ def validate_output_invariants(
             fixing_row.trade_source,
             fixing_row.scenario,
         )
-        economic_fixing_by_key[key] -= fixing_row.fixing_amount
+        economic_fixing_by_key[key] -= fx.to_eur(
+            fixing_row.fixing_amount,
+            fixing_row.currency,
+            fixing_row.fixing_date,
+        )
 
     for pnl_row in pnl:
         pnl_key = (

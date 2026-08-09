@@ -63,7 +63,7 @@ def test_required_prices_must_match_configured_currency_and_unit() -> None:
     priced = with_prices(base_bundle(initial_exposure=(initial,)))
     wrong_fixing_unit = tuple(
         row.model_copy(update={"unit": "therm"})
-        if row.price_lookup_date == date(2026, 1, 3)
+        if row.price_lookup_date == date(2026, 1, 4)
         else row
         for row in priced.fixing_prices
     )

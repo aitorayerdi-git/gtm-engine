@@ -268,6 +268,7 @@ def price_exposure(
     build_id: str,
 ) -> tuple[ExposureRow, ...]:
     index = _curve_index(bundle.curve_prices)
+    profiles = _curve_profiles(bundle)
     output: list[ExposureRow] = []
     for row in unpriced:
         book, underlying, delivery_month, trade_source, scenario = row.key
@@ -295,6 +296,7 @@ def price_exposure(
                 exposure_volume=row.exposure_volume,
                 curve_price=price,
                 exposure_mtm=mtm,
+                currency=profiles[normalize_text(underlying)][2],
                 trade_source=trade_source,
                 scenario=scenario,
                 simulation_status=bundle.config.simulation_status,
