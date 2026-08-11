@@ -2671,3 +2671,27 @@ point to `aitorayerdi-git/gtm-engine`.
 The final clean-clone gate passed: Ruff format and lint, mypy strict, and pip dependency checks
 reported no issues; pytest completed with 53 passed and one intentional private-workbook skip;
 branch coverage was 87.80% against the 85% required gate.
+
+## 2026-08-11 - Foto FO cost update workflow and manual compensation
+
+A macro-enabled local Input workbook was built from the authorized workbook without adding any
+private workbook or production data to Git. The versioned VBA module opens the approved Foto FO
+SharePoint source, validates its required sheets, headers, and Market Date coverage, calculates
+BOOK-level logistics, fee, optimization, and replication flows, publishes them to OPERATING
+FLOWS, and persists the cumulative source state needed for the next delta. MANUAL CHANGES now
+provides an UPDATE FOTO FO button plus timestamp, user, source, Market Date, and OK/ERROR status;
+UPDATE LOG retains an execution audit.
+
+A COSTS worksheet was added with the reviewed Gas Trading Model structure: Market Date, logistics
+cost by BOOK, exchange fees, total, source, timestamp, user, and comment. Automatic runs write
+AUTO rows. If a Market Date was missed, an operator can enter the daily delta in a MANUAL row.
+On the next automatic Market Date the macro subtracts manual rows after the prior saved state and
+before the new target date from the cumulative Foto FO delta. Once the automatic state advances,
+the same manual row is outside the adjustment interval and is not applied again.
+
+The local Foto FO validation completed OK for 13 active BOOKs, with three non-zero BOOKs and 664
+OPERATING FLOWS rows. A two-case regression inserted a EUR 123.45 manual CGA_SHT1 adjustment; the
+next automatic flow differed from the baseline by exactly EUR 123.45. MarketView was disabled
+only inside isolated Excel test instances and restored to LoadBehavior 3 after each test. The
+generated workbooks and error screenshots remain ignored local artifacts under the repository
+data policy.

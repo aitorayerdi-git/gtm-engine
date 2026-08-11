@@ -42,6 +42,7 @@ outputs/
 analysis/
 runtime_tests/
 local_data/
+mensajes-error/
 
 # Superseded local questionnaire files; deliberately excluded from evidence
 questions_answers.txt
