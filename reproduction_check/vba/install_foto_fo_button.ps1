@@ -104,6 +104,13 @@ try {
     }
 
     $sheet = $workbook.Worksheets.Item('MANUAL CHANGES')
+    $sheet.Range('F4').Value = 'MARKET DATE'
+    $sheet.Range('G5:H504').ClearContents()
+    $sheet.Columns.Item('G:H').Hidden = $true
+    $sheet.Columns.Item('F').ColumnWidth = 14
+    $sheet.Range('A2:M2').UnMerge()
+    $sheet.Range('A2:M2').Merge()
+    $sheet.Range('A2').Value = 'Edit only MARKET DATE in column F. UPDATE FOTO FO uses this date; hidden date columns are not operative.'
     foreach ($existing in @($sheet.Buttons())) {
         if ($existing.Name -eq 'btnUpdateFotoFO') { $existing.Delete() }
     }

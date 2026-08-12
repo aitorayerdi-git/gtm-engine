@@ -2760,3 +2760,9 @@ Replication uses Delivery Date from Foto FO but recognizes P&L on the immediatel
 configured Market Date, strictly before delivery even when delivery itself is a Market Day.
 CGTINDEX sums Index replication column J and MAIN column C; CGTO uses Index replication column I.
 The lookup observes weekends and the editable London bank-holiday table through MARKET CALENDAR.
+## 2026-08-12 - Simplified manual Market Date input
+
+MANUAL CHANGES exposes one operative date only: `MARKET DATE` in column F, which is the cell read
+by UPDATE FOTO FO. The redundant Effective Date and Valid Until columns remain structurally
+present for workbook compatibility but are cleared and hidden. The instruction banner now states
+explicitly that users edit only column F.
