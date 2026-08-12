@@ -106,6 +106,8 @@ Private Sub ValidateMissedMarketDates(ByVal targetDate As Date, ByVal books As O
             Err.Raise vbObjectError + 2105, , "FOTO FO STATE contiene fechas distintas por BOOK. No se puede determinar la cobertura manual."
         End If
     Next book
+    ValidateBaseline targetDate, stateDate
+    If BaselineDate() > stateDate Then stateDate = BaselineDate()
     If stateDate >= targetDate Then Exit Sub
 
     Set ws = ThisWorkbook.Worksheets(SH_CALENDAR)
@@ -126,6 +128,37 @@ Private Sub ValidateMissedMarketDates(ByVal targetDate As Date, ByVal books As O
         Err.Raise vbObjectError + 2106, , "Hay Market Dates sin actualizar: " & missingDates & ". Antes de continuar, cree en COSTS una fila por fecha, seleccione SOURCE=MANUAL e introduzca el delta diario. Si el delta fue cero, deje B:P en cero y documentelo en COMMENT."
     End If
 End Sub
+
+Private Sub ValidateBaseline(ByVal targetDate As Date, ByVal savedStateDate As Date)
+    Dim ws As Worksheet, lastRow As Long, r As Long, count As Long, baseline As Date, c As Long
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), "BASELINE", vbTextCompare) = 0 Then
+            count = count + 1
+            If Not IsDate(ws.Cells(r, 1).Value) Then Err.Raise vbObjectError + 2109, , "La fila BASELINE necesita una Market Date valida."
+            baseline = DateValue(ws.Cells(r, 1).Value)
+            If baseline >= targetDate Then Err.Raise vbObjectError + 2117, , "BASELINE debe ser anterior a Last Market Date."
+            For c = 2 To 16
+                If Len(Trim$(CStr(ws.Cells(r, c).Value))) > 0 And Not IsNumeric(ws.Cells(r, c).Value) Then Err.Raise vbObjectError + 2118, , "BASELINE contiene un importe no numerico."
+            Next c
+            If Len(Trim$(CStr(ws.Cells(r, 21).Value))) = 0 Then Err.Raise vbObjectError + 2119, , "BASELINE necesita un COMMENT explicativo."
+        End If
+    Next r
+    If count > 1 Then Err.Raise vbObjectError + 2123, , "COSTS solo puede contener una fila BASELINE."
+End Sub
+
+Private Function BaselineDate() As Date
+    Dim ws As Worksheet, lastRow As Long, r As Long
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), "BASELINE", vbTextCompare) = 0 And IsDate(ws.Cells(r, 1).Value) Then
+            BaselineDate = DateValue(ws.Cells(r, 1).Value)
+            Exit Function
+        End If
+    Next r
+End Function
 
 Private Function HasValidManualCostRow(ByVal marketDate As Date) As Boolean
     Dim ws As Worksheet, lastRow As Long, r As Long, c As Long
@@ -221,13 +254,21 @@ Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, 
     Dim result As Object, book As Variant, values As Variant
     Dim snapshots As Object, previousState As Variant, stateDate As Date
     Dim currentSnapshot As Double, feeAmount As Double, optim As Double, replication As Double
-    Dim manualCost As Double, manualFees As Double
+    Dim manualCost As Double, manualFees As Double, baselineCost As Double, baselineFees As Double
     Set result = CreateObject("Scripting.Dictionary"): result.CompareMode = vbTextCompare
     Set snapshots = LogisticsSnapshots(wb.Worksheets("Delta de costes"))
     For Each book In books.Keys
         values = Array(0#, 0#, 0#)
         previousState = ReadState(CStr(book))
         stateDate = CDate(previousState(0))
+        If BaselineDate() > stateDate Then
+            stateDate = BaselineDate()
+            previousState = Array(stateDate, 0#, 0#, 0#)
+            baselineCost = CostRowAdjustment(CStr(book), "BASELINE", stateDate, False)
+            baselineFees = CostRowAdjustment(CStr(book), "BASELINE", stateDate, True)
+        Else
+            baselineCost = 0#: baselineFees = 0#
+        End If
         If stateDate > targetDate Then Err.Raise vbObjectError + 2116, , "El estado de Foto FO es posterior a Last Market Date."
         currentSnapshot = 0#
         If snapshots.Exists(CStr(book)) Then currentSnapshot = CDbl(snapshots(CStr(book)))
@@ -250,10 +291,32 @@ Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, 
             values(0) = values(0) - manualCost
         End If
         values(1) = values(1) - manualFees
+        If StrComp(CStr(book), "CGTO", vbTextCompare) = 0 Or StrComp(CStr(book), "CGTINDEX", vbTextCompare) = 0 Then
+            values(2) = values(2) - baselineCost
+        Else
+            values(0) = values(0) - baselineCost
+        End If
+        values(1) = values(1) - baselineFees
         values = Array(values(0), values(1), values(2), currentSnapshot, feeAmount, optim)
         result(CStr(book)) = values
     Next book
     Set CalculateFlows = result
+End Function
+
+Private Function CostRowAdjustment(ByVal book As String, ByVal sourceType As String, ByVal rowDate As Date, ByVal feeColumn As Boolean) As Double
+    Dim ws As Worksheet, lastRow As Long, r As Long, columnIndex As Long
+    columnIndex = CostColumn(book, feeColumn)
+    If columnIndex = 0 Then Exit Function
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If IsDate(ws.Cells(r, 1).Value) Then
+            If DateValue(ws.Cells(r, 1).Value) = rowDate And StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), sourceType, vbTextCompare) = 0 Then
+                CostRowAdjustment = NzNumber(ws.Cells(r, columnIndex).Value)
+                Exit Function
+            End If
+        End If
+    Next r
 End Function
 
 Private Function LogisticsSnapshots(ByVal ws As Worksheet) As Object
@@ -442,8 +505,8 @@ Private Sub PublishCosts(ByVal values As Object, ByVal targetDate As Date, ByVal
         targetRow = lastRow + 1
         If targetRow < 5 Then targetRow = 5
     End If
-    If StrComp(Trim$(CStr(ws.Cells(targetRow, 18).Value)), "MANUAL", vbTextCompare) = 0 Then
-        Err.Raise vbObjectError + 2150, , "COSTS ya contiene una fila MANUAL para el Market Date objetivo. No se sobrescribe."
+    If StrComp(Trim$(CStr(ws.Cells(targetRow, 18).Value)), "MANUAL", vbTextCompare) = 0 Or StrComp(Trim$(CStr(ws.Cells(targetRow, 18).Value)), "BASELINE", vbTextCompare) = 0 Then
+        Err.Raise vbObjectError + 2150, , "COSTS ya contiene una fila MANUAL o BASELINE para el Market Date objetivo. No se sobrescribe."
     End If
     ws.Range(ws.Cells(targetRow, 2), ws.Cells(targetRow, 16)).ClearContents
     ws.Cells(targetRow, 1).Value = targetDate

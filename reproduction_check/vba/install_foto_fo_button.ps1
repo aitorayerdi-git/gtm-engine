@@ -51,21 +51,21 @@ try {
     $costSheet.Range('S3').Value = 'UPDATED AT'
     $costSheet.Range('T3').Value = 'UPDATED BY'
     $costSheet.Range('U3').Value = 'COMMENT'
-    $costSheet.Range('R4').Value = 'AUTO / MANUAL'
+    $costSheet.Range('R4').Value = 'AUTO / MANUAL / BASELINE'
     $costSheet.Range('S4').ClearContents()
     $costSheet.Range('T4').ClearContents()
-    $costSheet.Range('U4').Value = 'For a missed date: enter date + delta(s), set SOURCE=MANUAL.'
+    $costSheet.Range('U4').Value = 'BASELINE = cumulative opening balance (not P&L). MANUAL = missed daily delta.'
     $costSheet.Range('B4:P4').FormulaR1C1 = '=SUM(R[1]C:R[500]C)'
     $costSheet.Range('Q4').Formula = '=SUM(B4:P4)'
     $costSheet.Range('Q5:Q504').FormulaR1C1 = '=SUM(RC[-15]:RC[-1])'
     $costSheet.Range('R5:R504').Validation.Delete()
-    # Operators may only select MANUAL. AUTO is reserved for rows written by the macro.
-    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, 'MANUAL')
+    # AUTO is reserved for rows written by the macro.
+    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, 'MANUAL,BASELINE')
     $costSheet.Range('R5:R504').Validation.IgnoreBlank = $true
     $costSheet.Range('R5:R504').Validation.InCellDropdown = $true
     $costSheet.Range('R5:R504').Validation.ShowError = $true
     $costSheet.Range('R5:R504').Validation.ErrorTitle = 'Invalid source'
-    $costSheet.Range('R5:R504').Validation.ErrorMessage = 'Select MANUAL from the dropdown. AUTO is written only by UPDATE FOTO FO.'
+    $costSheet.Range('R5:R504').Validation.ErrorMessage = 'Select MANUAL or BASELINE. AUTO is written only by UPDATE FOTO FO.'
     $costSheet.Range('A5:A504').NumberFormat = 'yyyy-mm-dd'
     $costSheet.Range('S5:S504').NumberFormat = 'yyyy-mm-dd hh:mm:ss'
     $costSheet.Columns.Item('R').ColumnWidth = 12

@@ -39,7 +39,7 @@ try {
     $workbook.Worksheets.Item('COSTS').Range('A5:U504').ClearContents()
 
     $validationFormula = [string]$workbook.Worksheets.Item('COSTS').Range('R5').Validation.Formula1
-    if ($validationFormula -ne 'MANUAL') { throw "Expected MANUAL-only dropdown, got '$validationFormula'." }
+    if ($validationFormula -ne 'MANUAL,BASELINE') { throw "Expected MANUAL/BASELINE dropdown, got '$validationFormula'." }
 
     $excel.Run("'$($workbook.Name)'!UpdateFotoFO_LocalTest")
     $status = [string]$workbook.Worksheets.Item('MANUAL CHANGES').Range('M6').Text
@@ -52,7 +52,7 @@ try {
 
     Write-Output "MISSED_DATE=$($missedDate.ToString('yyyy-MM-dd'))"
     Write-Output "STATUS=$status"
-    Write-Output 'DROPDOWN=MANUAL'
+    Write-Output 'DROPDOWN=MANUAL,BASELINE'
     Write-Output 'STATE_NOT_ADVANCED=OK'
 }
 finally {

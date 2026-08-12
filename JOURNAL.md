@@ -2722,3 +2722,17 @@ holidays are therefore not included.
 MARKET CALENDAR calculates Is Market Day as a weekday that is not an active holiday in that
 table. Excel verification classified Saturday 29 August 2026 and the UK Summer bank holiday on
 Monday 31 August as non-market days, and Tuesday 1 September as a market day.
+
+## 2026-08-12 - Foto FO opening cost baseline
+
+COSTS now permits a single `BASELINE` row in addition to `MANUAL`; `AUTO` remains macro-only.
+BASELINE represents the cumulative Foto FO balance through the Market Date immediately before
+the first automatic run. It advances the effective opening boundary, is subtracted once from the
+first calculated cumulative delta, is never published as an OPERATING FLOWS/P&L row, and becomes
+inactive automatically after FOTO FO STATE advances beyond its date.
+
+The update rejects multiple baselines, a baseline on or after Last Market Date, non-numeric
+amounts, and a missing explanatory comment. The Excel regression proved that a EUR 123.45 opening
+balance reduces the first automatic CGA_SHT1 flow by exactly EUR 123.45 without changing the
+pre-existing OPERATING FLOWS population for the baseline date. Manual compensation and missed-date
+guard regressions continued to pass.
