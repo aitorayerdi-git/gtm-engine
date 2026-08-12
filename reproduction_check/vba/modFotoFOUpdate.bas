@@ -47,6 +47,7 @@ Private Sub UpdateFotoFOCore(ByVal sourcePath As String, ByVal localTest As Bool
     previousDate = PreviousMarketDate(targetDate)
     Set activeBooks = ReadActiveBooks()
     If activeBooks.Count = 0 Then Err.Raise vbObjectError + 2101, , "BOOKS no contiene BOOK activos."
+    ValidateMissedMarketDates targetDate, activeBooks
 
     Set sourceBook = OpenFotoFO(sourcePath, openedHere)
     sourceLabel = sourceBook.FullName
@@ -90,6 +91,62 @@ Private Function OpenFotoFO(ByVal sourcePath As String, ByRef openedHere As Bool
     Next wb
     Set OpenFotoFO = Workbooks.Open(Filename:=sourcePath, UpdateLinks:=0, ReadOnly:=True)
     openedHere = True
+End Function
+
+Private Sub ValidateMissedMarketDates(ByVal targetDate As Date, ByVal books As Object)
+    Dim stateDate As Date, book As Variant, bookState As Variant
+    Dim ws As Worksheet, lastRow As Long, r As Long, candidate As Date
+    Dim missingDates As String
+
+    For Each book In books.Keys
+        bookState = ReadState(CStr(book))
+        If stateDate = 0 Then
+            stateDate = CDate(bookState(0))
+        ElseIf DateValue(CDate(bookState(0))) <> stateDate Then
+            Err.Raise vbObjectError + 2105, , "FOTO FO STATE contiene fechas distintas por BOOK. No se puede determinar la cobertura manual."
+        End If
+    Next book
+    If stateDate >= targetDate Then Exit Sub
+
+    Set ws = ThisWorkbook.Worksheets(SH_CALENDAR)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If IsDate(ws.Cells(r, 1).Value) And CBool(ws.Cells(r, 2).Value) Then
+            candidate = DateValue(ws.Cells(r, 1).Value)
+            If candidate > stateDate And candidate < targetDate Then
+                If Not HasValidManualCostRow(candidate) Then
+                    If Len(missingDates) > 0 Then missingDates = missingDates & ", "
+                    missingDates = missingDates & Format$(candidate, "dd/mm/yyyy")
+                End If
+            End If
+        End If
+    Next r
+
+    If Len(missingDates) > 0 Then
+        Err.Raise vbObjectError + 2106, , "Hay Market Dates sin actualizar: " & missingDates & ". Antes de continuar, cree en COSTS una fila por fecha, seleccione SOURCE=MANUAL e introduzca el delta diario. Si el delta fue cero, deje B:P en cero y documentelo en COMMENT."
+    End If
+End Sub
+
+Private Function HasValidManualCostRow(ByVal marketDate As Date) As Boolean
+    Dim ws As Worksheet, lastRow As Long, r As Long, c As Long
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If IsDate(ws.Cells(r, 1).Value) Then
+            If DateValue(ws.Cells(r, 1).Value) = marketDate And StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), "MANUAL", vbBinaryCompare) = 0 Then
+                For c = 2 To 16
+                    If Len(Trim$(CStr(ws.Cells(r, c).Value))) > 0 And Not IsNumeric(ws.Cells(r, c).Value) Then
+                        Err.Raise vbObjectError + 2107, , "COSTS contiene un importe no numerico para " & Format$(marketDate, "dd/mm/yyyy") & "."
+                    End If
+                Next c
+                If Len(Trim$(CStr(ws.Cells(r, 21).Value))) = 0 Then
+                    Err.Raise vbObjectError + 2108, , "La fila MANUAL de " & Format$(marketDate, "dd/mm/yyyy") & " necesita un COMMENT explicativo."
+                End If
+                HasValidManualCostRow = True
+                Exit Function
+            End If
+        End If
+    Next r
 End Function
 
 Private Function ReadLastMarketDate() As Date

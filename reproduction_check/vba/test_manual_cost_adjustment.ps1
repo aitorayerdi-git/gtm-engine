@@ -44,18 +44,16 @@ function Invoke-CostCase([string]$Path, [double]$ManualAmount) {
         $stateSheet = $workbook.Worksheets.Item('FOTO FO STATE')
         $lastStateRow = $stateSheet.Cells($stateSheet.Rows.Count, 1).End(-4162).Row
         $stateSheet.Range("B2:B$lastStateRow").Value2 = $stateDate.ToOADate()
-        if ($ManualAmount -ne 0) {
-            $stage = 'prepare-manual-row'
-            $costs = $workbook.Worksheets.Item('COSTS')
-            $costs.Range('A5:U5').ClearContents()
-            $costs.Range('A5').Value2 = $manualDate.ToOADate()
-            $costs.Range('B5').Value2 = $ManualAmount
-            $costs.Range('Q5').Formula = '=SUM(B5:P5)'
-            $costs.Range('R5').Value2 = 'MANUAL'
-            $costs.Range('S5').Value2 = (Get-Date).ToOADate()
-            $costs.Range('T5').Value2 = [string]$env:USERNAME
-            $costs.Range('U5').Value2 = 'Automated compensation test'
-        }
+        $stage = 'prepare-manual-row'
+        $costs = $workbook.Worksheets.Item('COSTS')
+        $costs.Range('A5:U5').ClearContents()
+        $costs.Range('A5').Value2 = $manualDate.ToOADate()
+        $costs.Range('B5').Value2 = $ManualAmount
+        $costs.Range('Q5').Formula = '=SUM(B5:P5)'
+        $costs.Range('R5').Value2 = 'MANUAL'
+        $costs.Range('S5').Value2 = (Get-Date).ToOADate()
+        $costs.Range('T5').Value2 = [string]$env:USERNAME
+        $costs.Range('U5').Value2 = 'Automated compensation test'
         $stage = 'run-macro'
         $excel.Run("'$($workbook.Name)'!UpdateFotoFO_LocalTest")
         $status = $workbook.Worksheets.Item('MANUAL CHANGES').Range('M6').Text

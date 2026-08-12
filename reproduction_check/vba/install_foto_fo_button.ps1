@@ -58,7 +58,13 @@ try {
     $costSheet.Range('Q4').Formula = '=SUM(B4:P4)'
     $costSheet.Range('Q5:Q504').FormulaR1C1 = '=SUM(RC[-15]:RC[-1])'
     $costSheet.Range('R5:R504').Validation.Delete()
-    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, 'AUTO,MANUAL')
+    # Operators may only select MANUAL. AUTO is reserved for rows written by the macro.
+    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, 'MANUAL')
+    $costSheet.Range('R5:R504').Validation.IgnoreBlank = $true
+    $costSheet.Range('R5:R504').Validation.InCellDropdown = $true
+    $costSheet.Range('R5:R504').Validation.ShowError = $true
+    $costSheet.Range('R5:R504').Validation.ErrorTitle = 'Invalid source'
+    $costSheet.Range('R5:R504').Validation.ErrorMessage = 'Select MANUAL from the dropdown. AUTO is written only by UPDATE FOTO FO.'
     $costSheet.Range('A5:A504').NumberFormat = 'yyyy-mm-dd'
     $costSheet.Range('S5:S504').NumberFormat = 'yyyy-mm-dd hh:mm:ss'
     $costSheet.Columns.Item('R').ColumnWidth = 12

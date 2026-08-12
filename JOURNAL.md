@@ -2695,3 +2695,15 @@ next automatic flow differed from the baseline by exactly EUR 123.45. MarketView
 only inside isolated Excel test instances and restored to LoadBehavior 3 after each test. The
 generated workbooks and error screenshots remain ignored local artifacts under the repository
 data policy.
+
+## 2026-08-12 - Missed Foto FO date guard
+
+The COSTS SOURCE dropdown now offers only `MANUAL`; `AUTO` is reserved for rows published by the
+macro. Before opening Foto FO or changing any output, the update checks every configured Market
+Date strictly between the saved state and Last Market Date. Each skipped date must have one
+valid `MANUAL` COSTS row with numeric or blank BOOK amounts and a non-empty comment. A confirmed
+zero-cost day is represented explicitly by a zero-valued MANUAL row.
+
+If any skipped date lacks that acknowledgement, the update fails closed, lists the missing dates,
+and leaves FOTO FO STATE unchanged. Excel regression checks confirmed the MANUAL-only dropdown,
+the missed-date error, the non-advancing state, and the existing EUR 123.45 compensation result.
