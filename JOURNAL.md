@@ -2754,3 +2754,9 @@ Business review clarified that the COSTS worksheet must source costs exclusively
 component of OPERATING FLOWS, while Index replication and MAIN continue to populate Replication;
 those P&L components are no longer copied into COSTS. Logistics deltas are rounded to cents after
 baseline and manual compensation.
+## 2026-08-12 - Replication delivery-to-market-date rule
+
+Replication uses Delivery Date from Foto FO but recognizes P&L on the immediately preceding
+configured Market Date, strictly before delivery even when delivery itself is a Market Day.
+CGTINDEX sums Index replication column J and MAIN column C; CGTO uses Index replication column I.
+The lookup observes weekends and the editable London bank-holiday table through MARKET CALENDAR.

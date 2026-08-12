@@ -373,7 +373,7 @@ Private Function ReplicationFlow(ByVal wb As Workbook, ByVal book As String, ByV
         For r = 2 To lastRow
             If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
                 economicDate = DateValue(CDate(data(r - 1, 1)))
-                If AppliedMarketDate(economicDate) = targetDate Then
+                If PreviousMarketDateForDelivery(economicDate) = targetDate Then
                     If StrComp(book, "CGTO", vbTextCompare) = 0 Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 9))
                     If StrComp(book, "CGTINDEX", vbTextCompare) = 0 Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 10))
                 End If
@@ -387,20 +387,20 @@ Private Function ReplicationFlow(ByVal wb As Workbook, ByVal book As String, ByV
         For r = 2 To lastRow
             If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
                 economicDate = DateValue(CDate(data(r - 1, 1)))
-                If AppliedMarketDate(economicDate) = targetDate Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 3))
+                If PreviousMarketDateForDelivery(economicDate) = targetDate Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 3))
             End If
         Next r
     End If
 End Function
 
-Private Function AppliedMarketDate(ByVal economicDate As Date) As Date
+Private Function PreviousMarketDateForDelivery(ByVal economicDate As Date) As Date
     Dim ws As Worksheet, lastRow As Long, r As Long, candidate As Date, cacheKey As String
     If mAppliedDateCache Is Nothing Then
         Set mAppliedDateCache = CreateObject("Scripting.Dictionary")
     End If
     cacheKey = CStr(CLng(DateValue(economicDate)))
     If mAppliedDateCache.Exists(cacheKey) Then
-        AppliedMarketDate = mAppliedDateCache(cacheKey)
+        PreviousMarketDateForDelivery = mAppliedDateCache(cacheKey)
         Exit Function
     End If
     Set ws = ThisWorkbook.Worksheets(SH_CALENDAR)
@@ -408,14 +408,10 @@ Private Function AppliedMarketDate(ByVal economicDate As Date) As Date
     For r = 5 To lastRow
         If IsDate(ws.Cells(r, 1).Value) And CBool(ws.Cells(r, 2).Value) Then
             candidate = DateValue(ws.Cells(r, 1).Value)
-            If candidate >= economicDate Then
-                AppliedMarketDate = candidate
-                mAppliedDateCache(cacheKey) = AppliedMarketDate
-                Exit Function
-            End If
+            If candidate < economicDate And candidate > PreviousMarketDateForDelivery Then PreviousMarketDateForDelivery = candidate
         End If
     Next r
-    mAppliedDateCache(cacheKey) = 0
+    mAppliedDateCache(cacheKey) = PreviousMarketDateForDelivery
 End Function
 
 Private Sub ValidateCalculatedFlows(ByVal values As Object, ByVal books As Object)
