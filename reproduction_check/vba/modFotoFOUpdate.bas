@@ -58,6 +58,7 @@ Private Sub UpdateFotoFOCore(ByVal sourcePath As String, ByVal localTest As Bool
     ValidateSource sourceBook, targetDate
     Set flowValues = CalculateFlows(sourceBook, targetDate, previousDate, activeBooks)
     ValidateCalculatedFlows flowValues, activeBooks
+    PublishManualBackfill sourceBook, targetDate, activeBooks
     PublishFlows flowValues, targetDate, activeBooks, rowCount, nonZeroCount
     PublishCosts flowValues, targetDate, activeBooks
     SaveState flowValues, targetDate, activeBooks
@@ -95,6 +96,58 @@ Private Function OpenFotoFO(ByVal sourcePath As String, ByRef openedHere As Bool
     Next wb
     Set OpenFotoFO = Workbooks.Open(Filename:=sourcePath, UpdateLinks:=0, ReadOnly:=True)
     openedHere = True
+End Function
+
+Private Sub PublishManualBackfill(ByVal wb As Workbook, ByVal targetDate As Date, ByVal books As Object)
+    Dim ws As Worksheet, lastRow As Long, r As Long, manualDate As Date, priorDate As Date
+    Dim values As Object, book As Variant, parts As Variant
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If IsDate(ws.Cells(r, 1).Value) And StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), "MANUAL", vbTextCompare) = 0 Then
+            manualDate = DateValue(ws.Cells(r, 1).Value)
+            If manualDate < targetDate Then
+                priorDate = PreviousMarketDate(manualDate)
+                Set values = CreateObject("Scripting.Dictionary"): values.CompareMode = vbTextCompare
+                For Each book In books.Keys
+                    parts = Array(Round(ManualRowValue(r, CStr(book), False), 2), _
+                        Round(FeeSnapshotAtDate(wb.Worksheets("Canones"), CStr(book), manualDate) - FeeSnapshotAtDate(wb.Worksheets("Canones"), CStr(book), priorDate) + OptimizationFlow(wb.Worksheets("Optimizaciones"), CStr(book), priorDate, manualDate), 2), _
+                        Round(ReplicationFlow(wb, CStr(book), manualDate), 2))
+                    values(CStr(book)) = parts
+                Next book
+                ReplaceFlowsForDate values, manualDate, books, "FOTO-FO-MANUAL-"
+            End If
+        End If
+    Next r
+End Sub
+
+Private Function ManualRowValue(ByVal rowIndex As Long, ByVal book As String, ByVal feeColumn As Boolean) As Double
+    Dim columnIndex As Long
+    columnIndex = CostColumn(book, feeColumn)
+    If columnIndex > 0 Then ManualRowValue = NzNumber(ThisWorkbook.Worksheets(SH_COSTS).Cells(rowIndex, columnIndex).Value)
+End Function
+
+Private Function FeeSnapshotAtDate(ByVal ws As Worksheet, ByVal book As String, ByVal targetDate As Date) As Double
+    Dim op1 As String, op2 As String, lastRow As Long, r As Long, data As Variant, endDate As Date, operation As String
+    If StrComp(book, "CGA_TVB", vbTextCompare) = 0 Then
+        op1 = "PVB-TVB": op2 = "TVB-TVB"
+    ElseIf StrComp(book, "CGA_AVB", vbTextCompare) = 0 Then
+        op1 = "PVB-AVB"
+    Else
+        Exit Function
+    End If
+    lastRow = ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
+    If lastRow < 2 Then Exit Function
+    data = ws.Range("A2:J" & lastRow).Value2
+    For r = 2 To lastRow
+        If IsDate(data(r - 1, 2)) Or IsNumeric(data(r - 1, 2)) Then
+            endDate = DateValue(CDate(data(r - 1, 2)))
+            operation = Trim$(CStr(data(r - 1, 3)))
+            If endDate <= targetDate And (StrComp(operation, op1, vbTextCompare) = 0 Or (Len(op2) > 0 And StrComp(operation, op2, vbTextCompare) = 0)) Then
+                FeeSnapshotAtDate = FeeSnapshotAtDate + NzNumber(data(r - 1, 10))
+            End If
+        End If
+    Next r
 End Function
 
 Private Sub ValidateMissedMarketDates(ByVal targetDate As Date, ByVal books As Object)
@@ -427,6 +480,16 @@ Private Sub ValidateCalculatedFlows(ByVal values As Object, ByVal books As Objec
 End Sub
 
 Private Sub PublishFlows(ByVal values As Object, ByVal targetDate As Date, ByVal books As Object, ByRef rowCount As Long, ByRef nonZeroCount As Long)
+    Dim book As Variant, parts As Variant
+    ReplaceFlowsForDate values, targetDate, books, "FOTO-FO-"
+    For Each book In books.Keys
+        parts = values(CStr(book))
+        rowCount = rowCount + 1
+        If Abs(CDbl(parts(0))) + Abs(CDbl(parts(1))) + Abs(CDbl(parts(2))) > 0.0000001 Then nonZeroCount = nonZeroCount + 1
+    Next book
+End Sub
+
+Private Sub ReplaceFlowsForDate(ByVal values As Object, ByVal targetDate As Date, ByVal books As Object, ByVal sourcePrefix As String)
     Dim ws As Worksheet, lo As ListObject, r As Long, book As Variant, parts As Variant, newRow As ListRow
     Set ws = ThisWorkbook.Worksheets(SH_FLOWS)
     Set lo = ws.ListObjects("tblOperatingFlows")
@@ -445,9 +508,7 @@ Private Sub PublishFlows(ByVal values As Object, ByVal targetDate As Date, ByVal
         newRow.Range.Cells(1, 3).Value = CDbl(parts(0))
         newRow.Range.Cells(1, 4).Value = CDbl(parts(1))
         newRow.Range.Cells(1, 5).Value = CDbl(parts(2))
-        newRow.Range.Cells(1, 6).Value = "FOTO-FO-" & Format$(targetDate, "yyyymmdd") & "-" & CStr(book)
-        rowCount = rowCount + 1
-        If Abs(CDbl(parts(0))) + Abs(CDbl(parts(1))) + Abs(CDbl(parts(2))) > 0.0000001 Then nonZeroCount = nonZeroCount + 1
+        newRow.Range.Cells(1, 6).Value = sourcePrefix & Format$(targetDate, "yyyymmdd") & "-" & CStr(book)
     Next book
     lo.ListColumns(1).DataBodyRange.NumberFormat = "yyyy-mm-dd"
 End Sub

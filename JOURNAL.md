@@ -2766,3 +2766,12 @@ MANUAL CHANGES exposes one operative date only: `MARKET DATE` in column F, which
 by UPDATE FOTO FO. The redundant Effective Date and Valid Until columns remain structurally
 present for workbook compatibility but are cleared and hidden. The instruction banner now states
 explicitly that users edit only column F.
+## 2026-08-12 - Manual-date OPERATING FLOWS backfill
+
+Every MANUAL COSTS Market Date before the AUTO target now receives a complete 13-BOOK replacement
+set in OPERATING FLOWS. Logistics comes from the manual COSTS row; Fees and Optimizations are
+reconstructed from Canones and Optimizaciones for that market-date interval; Replication uses the
+confirmed prior-market-date delivery rule. Re-running remains an upsert by Market Date.
+
+The saved August case produced 91 rows across 3, 4, 5, 6, 7, 10, and 11 August. The 11 August
+Replication values were CGTINDEX -23.25 and CGTO 2,407.39.
