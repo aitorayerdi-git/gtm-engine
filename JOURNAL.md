@@ -2707,3 +2707,14 @@ zero-cost day is represented explicitly by a zero-valued MANUAL row.
 If any skipped date lacks that acknowledgement, the update fails closed, lists the missing dates,
 and leaves FOTO FO STATE unchanged. Excel regression checks confirmed the MANUAL-only dropdown,
 the missed-date error, the non-advancing state, and the existing EUR 123.45 compensation result.
+
+## 2026-08-12 - Editable UK holiday calendar
+
+MANUAL CHANGES now contains an editable `tblUKHolidays` table seeded with the official England
+and Wales bank holidays for 2025 through 2028. Operators can change a date or description, add a
+row, or deactivate a holiday with the YES/NO dropdown. The table, rather than hard-coded VBA, is
+the holiday authority.
+
+MARKET CALENDAR calculates Is Market Day as a weekday that is not an active holiday in that
+table. Excel verification classified Saturday 29 August 2026 and the UK Summer bank holiday on
+Monday 31 August as non-market days, and Tuesday 1 September as a market day.

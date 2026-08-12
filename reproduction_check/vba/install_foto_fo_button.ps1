@@ -11,6 +11,7 @@ $sheet = $null
 $button = $null
 $templateWorkbook = $null
 $costSheet = $null
+$holidayTable = $null
 
 try {
     $excel = New-Object -ComObject Excel.Application
@@ -113,6 +114,102 @@ try {
     $button.Font.Size = 11
 
     $sheet.Columns.Item('O:R').ColumnWidth = 12
+
+    # Editable England and Wales bank-holiday authority. Dates are initial values;
+    # operators can amend, add, deactivate, or remove rows directly in MANUAL CHANGES.
+    $sheet.Range('P10:S10').Merge()
+    $sheet.Range('P10').Value = 'UK HOLIDAYS - ENGLAND AND WALES (EDITABLE)'
+    $sheet.Range('P11').Value = 'Date'
+    $sheet.Range('Q11').Value = 'Holiday'
+    $sheet.Range('R11').Value = 'Active'
+    $sheet.Range('S11').Value = 'Notes'
+    $ukHolidays = @(
+        @([datetime]'2025-01-01', "New Year's Day", 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-04-18', 'Good Friday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-04-21', 'Easter Monday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-05-05', 'Early May bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-05-26', 'Spring bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-08-25', 'Summer bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-12-25', 'Christmas Day', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2025-12-26', 'Boxing Day', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-01-01', "New Year's Day", 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-04-03', 'Good Friday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-04-06', 'Easter Monday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-05-04', 'Early May bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-05-25', 'Spring bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-08-31', 'Summer bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-12-25', 'Christmas Day', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2026-12-28', 'Boxing Day (substitute day)', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-01-01', "New Year's Day", 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-03-26', 'Good Friday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-03-29', 'Easter Monday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-05-03', 'Early May bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-05-31', 'Spring bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-08-30', 'Summer bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-12-27', 'Christmas Day (substitute day)', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2027-12-28', 'Boxing Day (substitute day)', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-01-03', "New Year's Day (substitute day)", 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-04-14', 'Good Friday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-04-17', 'Easter Monday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-05-01', 'Early May bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-05-29', 'Spring bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-08-28', 'Summer bank holiday', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-12-25', 'Christmas Day', 'YES', 'GOV.UK baseline'),
+        @([datetime]'2028-12-26', 'Boxing Day', 'YES', 'GOV.UK baseline')
+    )
+    $holidayRows = @(
+        "2025-01-01|New Year's Day|YES|GOV.UK baseline", '2025-04-18|Good Friday|YES|GOV.UK baseline',
+        '2025-04-21|Easter Monday|YES|GOV.UK baseline', '2025-05-05|Early May bank holiday|YES|GOV.UK baseline',
+        '2025-05-26|Spring bank holiday|YES|GOV.UK baseline', '2025-08-25|Summer bank holiday|YES|GOV.UK baseline',
+        '2025-12-25|Christmas Day|YES|GOV.UK baseline', '2025-12-26|Boxing Day|YES|GOV.UK baseline',
+        "2026-01-01|New Year's Day|YES|GOV.UK baseline", '2026-04-03|Good Friday|YES|GOV.UK baseline',
+        '2026-04-06|Easter Monday|YES|GOV.UK baseline', '2026-05-04|Early May bank holiday|YES|GOV.UK baseline',
+        '2026-05-25|Spring bank holiday|YES|GOV.UK baseline', '2026-08-31|Summer bank holiday|YES|GOV.UK baseline',
+        '2026-12-25|Christmas Day|YES|GOV.UK baseline', '2026-12-28|Boxing Day (substitute day)|YES|GOV.UK baseline',
+        "2027-01-01|New Year's Day|YES|GOV.UK baseline", '2027-03-26|Good Friday|YES|GOV.UK baseline',
+        '2027-03-29|Easter Monday|YES|GOV.UK baseline', '2027-05-03|Early May bank holiday|YES|GOV.UK baseline',
+        '2027-05-31|Spring bank holiday|YES|GOV.UK baseline', '2027-08-30|Summer bank holiday|YES|GOV.UK baseline',
+        '2027-12-27|Christmas Day (substitute day)|YES|GOV.UK baseline', '2027-12-28|Boxing Day (substitute day)|YES|GOV.UK baseline',
+        "2028-01-03|New Year's Day (substitute day)|YES|GOV.UK baseline", '2028-04-14|Good Friday|YES|GOV.UK baseline',
+        '2028-04-17|Easter Monday|YES|GOV.UK baseline', '2028-05-01|Early May bank holiday|YES|GOV.UK baseline',
+        '2028-05-29|Spring bank holiday|YES|GOV.UK baseline', '2028-08-28|Summer bank holiday|YES|GOV.UK baseline',
+        '2028-12-25|Christmas Day|YES|GOV.UK baseline', '2028-12-26|Boxing Day|YES|GOV.UK baseline'
+    )
+    $holidayCount = $holidayRows.Count
+    for ($holidayIndex = 0; $holidayIndex -lt $holidayCount; $holidayIndex++) {
+        $holidayParts = $holidayRows[$holidayIndex].Split('|')
+        for ($holidayColumn = 0; $holidayColumn -lt 4; $holidayColumn++) {
+            $holidayValue = $holidayParts[$holidayColumn]
+            if ($holidayColumn -eq 0) {
+                $sheet.Cells.Item(12 + $holidayIndex, 16 + $holidayColumn).Value2 = [double]([datetime]$holidayValue).ToOADate()
+            }
+            else {
+                $sheet.Cells.Item(12 + $holidayIndex, 16 + $holidayColumn).Value = [string]$holidayValue
+            }
+        }
+    }
+    $holidayLastRow = 11 + $holidayCount
+    $holidayTable = $sheet.ListObjects.Add(1, $sheet.Range("P11:S$holidayLastRow"), [Type]::Missing, 1)
+    $holidayTable.Name = 'tblUKHolidays'
+    $holidayTable.TableStyle = 'TableStyleMedium2'
+    $sheet.Range("P12:P$holidayLastRow").NumberFormat = 'yyyy-mm-dd'
+    $sheet.Range('R12:R504').Validation.Delete()
+    $sheet.Range('R12:R504').Validation.Add(3, 1, 1, 'YES,NO')
+    $sheet.Range('R12:R504').Validation.InCellDropdown = $true
+    $sheet.Range('R12:R504').Validation.ShowError = $true
+    $sheet.Range('R12:R504').Validation.ErrorMessage = 'Select YES or NO.'
+    $sheet.Columns.Item('P').ColumnWidth = 14
+    $sheet.Columns.Item('Q').ColumnWidth = 32
+    $sheet.Columns.Item('R').ColumnWidth = 12
+    $sheet.Columns.Item('S').ColumnWidth = 24
+    $sheet.Range('P10:S10').Font.Bold = $true
+    $sheet.Range('P10:S10').Font.Color = 16777215
+    $sheet.Range('P10:S10').Interior.Color = 5287936
+
+    $calendarSheet = $workbook.Worksheets.Item('MARKET CALENDAR')
+    $calendarLastRow = $calendarSheet.Cells($calendarSheet.Rows.Count, 1).End(-4162).Row
+    $calendarSheet.Range("B5:B$calendarLastRow").FormulaR1C1 = '=AND(WEEKDAY(RC[-1],2)<=5,COUNTIFS(tblUKHolidays[Date],RC[-1],tblUKHolidays[Active],"YES")=0)'
+    $calendarSheet.Range("B5:B$calendarLastRow").Calculate()
     $workbook.Save()
     $workbook.Close($true)
     $workbook = $null
@@ -122,7 +219,7 @@ finally {
     if ($null -ne $templateWorkbook) { $templateWorkbook.Close($false) }
     if ($null -ne $workbook) { $workbook.Close($false) }
     if ($null -ne $excel) { $excel.Quit() }
-    foreach ($object in @($costSheet, $button, $sheet, $templateWorkbook, $workbook, $excel)) {
+    foreach ($object in @($holidayTable, $costSheet, $button, $sheet, $templateWorkbook, $workbook, $excel)) {
         if ($null -ne $object) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($object) }
     }
     [GC]::Collect()
