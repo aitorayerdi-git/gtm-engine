@@ -2747,3 +2747,10 @@ COSTS contract and the manual baseline. Excel serial dates loaded through `Value
 for Canones, optimizations, replication, and MAIN; previously those array values were skipped by
 `IsDate`. The saved 11 August case now rebuilds its logistics values from corrected inputs rather
 than carrying the first erroneous publication.
+## 2026-08-12 - Foto FO costs restricted to Delta de costes
+
+Business review clarified that the Foto FO update must source costs exclusively from the
+`Delta de costes` worksheet. Canones, Optimizaciones, Index replication, and MAIN are no longer
+validated or read by this workflow. Their prior contributions explained unexpected CGA_AVB,
+CGTINDEX, CGTO, and CGA_TVB values. The published fee and replication components are now zero,
+and logistics deltas are rounded to cents after baseline and manual compensation.
