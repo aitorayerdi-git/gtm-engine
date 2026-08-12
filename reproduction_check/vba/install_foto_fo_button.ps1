@@ -115,10 +115,11 @@ try {
 
     $sheet.Columns.Item('O:R').ColumnWidth = 12
 
-    # Editable England and Wales bank-holiday authority. Dates are initial values;
+    # Editable London bank-holiday authority (official England and Wales division).
+    # Dates are initial values;
     # operators can amend, add, deactivate, or remove rows directly in MANUAL CHANGES.
     $sheet.Range('P10:S10').Merge()
-    $sheet.Range('P10').Value = 'UK HOLIDAYS - ENGLAND AND WALES (EDITABLE)'
+    $sheet.Range('P10').Value = 'LONDON BANK HOLIDAYS (EDITABLE)'
     $sheet.Range('P11').Value = 'Date'
     $sheet.Range('Q11').Value = 'Holiday'
     $sheet.Range('R11').Value = 'Active'

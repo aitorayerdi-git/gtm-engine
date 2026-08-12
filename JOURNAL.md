@@ -2715,6 +2715,10 @@ and Wales bank holidays for 2025 through 2028. Operators can change a date or de
 row, or deactivate a holiday with the YES/NO dropdown. The table, rather than hard-coded VBA, is
 the holiday authority.
 
+The user-facing heading is `LONDON BANK HOLIDAYS (EDITABLE)`. London has no separate GOV.UK bank
+holiday division; it follows the official England and Wales dates. Scotland and Northern Ireland
+holidays are therefore not included.
+
 MARKET CALENDAR calculates Is Market Day as a weekday that is not an active holiday in that
 table. Excel verification classified Saturday 29 August 2026 and the UK Summer bank holiday on
 Monday 31 August as non-market days, and Tuesday 1 September as a market day.
