@@ -2775,3 +2775,32 @@ confirmed prior-market-date delivery rule. Re-running remains an upsert by Marke
 
 The saved August case produced 91 rows across 3, 4, 5, 6, 7, 10, and 11 August. The 11 August
 Replication values were CGTINDEX -23.25 and CGTO 2,407.39.
+## 2026-08-12 - End-of-day handoff
+
+The working workbook is `reproduction_check/Input data.xlsm`. MANUAL CHANGES exposes one operative
+MARKET DATE in F5; the redundant date columns are hidden. The editable London bank-holiday table
+drives MARKET CALENDAR together with automatic weekend exclusion.
+
+Foto FO rules confirmed at close:
+
+- COSTS contains only logistics sourced from `Delta de costes`.
+- One BASELINE row initializes cumulative logistics without publishing opening P&L.
+- MANUAL rows represent omitted daily logistics deltas and require a comment.
+- Canones plus Optimizaciones populate Fees and Optimizations in OPERATING FLOWS only.
+- CGTO Replication uses Index replication column I.
+- CGTINDEX Replication uses Index replication column J plus MAIN column C.
+- Replication Delivery Date is recognized on the immediately preceding configured Market Date,
+  strictly before delivery and respecting weekends and active London holidays.
+- Re-running the first AUTO date after correcting baseline/manual inputs rebuilds it from current
+  inputs instead of carrying the prior publication.
+- Every MANUAL Market Date before the AUTO target is backfilled as a complete 13-BOOK replacement
+  set in OPERATING FLOWS; the target AUTO date is also replaced, so reruns do not duplicate keys.
+
+The saved August case has 91 OPERATING FLOWS rows across 3, 4, 5, 6, 7, 10, and 11 August 2026.
+For 11 August, logistics is CGA_SHT1 -10,064.66 and CGA_TVB 760.37; Replication is CGTINDEX -23.25
+and CGTO 2,407.39. The independent 31 July Replication check was CGTINDEX -2,460.11 and CGTO
+-5,937.57, comprising delivery dates 1, 2, and 3 August.
+
+Repository main is synchronized with `aitorayerdi/main`. The next session should start from the
+saved Input workbook and review downstream P&L output/rebuild behavior after the complete August
+OPERATING FLOWS backfill.
