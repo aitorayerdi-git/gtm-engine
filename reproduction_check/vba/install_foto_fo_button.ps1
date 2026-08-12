@@ -60,7 +60,10 @@ try {
     $costSheet.Range('Q5:Q504').FormulaR1C1 = '=SUM(RC[-15]:RC[-1])'
     $costSheet.Range('R5:R504').Validation.Delete()
     # AUTO is reserved for rows written by the macro.
-    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, 'MANUAL,BASELINE')
+    $costSheet.Range('X1').Value = 'MANUAL'
+    $costSheet.Range('X2').Value = 'BASELINE'
+    $costSheet.Columns.Item('X').Hidden = $true
+    $costSheet.Range('R5:R504').Validation.Add(3, 1, 1, '=$X$1:$X$2')
     $costSheet.Range('R5:R504').Validation.IgnoreBlank = $true
     $costSheet.Range('R5:R504').Validation.InCellDropdown = $true
     $costSheet.Range('R5:R504').Validation.ShowError = $true
@@ -195,7 +198,10 @@ try {
     $holidayTable.TableStyle = 'TableStyleMedium2'
     $sheet.Range("P12:P$holidayLastRow").NumberFormat = 'yyyy-mm-dd'
     $sheet.Range('R12:R504').Validation.Delete()
-    $sheet.Range('R12:R504').Validation.Add(3, 1, 1, 'YES,NO')
+    $sheet.Range('V1').Value = 'YES'
+    $sheet.Range('V2').Value = 'NO'
+    $sheet.Columns.Item('V').Hidden = $true
+    $sheet.Range('R12:R504').Validation.Add(3, 1, 1, '=$V$1:$V$2')
     $sheet.Range('R12:R504').Validation.InCellDropdown = $true
     $sheet.Range('R12:R504').Validation.ShowError = $true
     $sheet.Range('R12:R504').Validation.ErrorMessage = 'Select YES or NO.'

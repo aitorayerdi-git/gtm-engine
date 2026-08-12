@@ -39,7 +39,8 @@ try {
     $workbook.Worksheets.Item('COSTS').Range('A5:U504').ClearContents()
 
     $validationFormula = [string]$workbook.Worksheets.Item('COSTS').Range('R5').Validation.Formula1
-    if ($validationFormula -ne 'MANUAL,BASELINE') { throw "Expected MANUAL/BASELINE dropdown, got '$validationFormula'." }
+    if ($validationFormula -ne '=$X$1:$X$2') { throw "Expected range-backed MANUAL/BASELINE dropdown, got '$validationFormula'." }
+    if ([string]$workbook.Worksheets.Item('COSTS').Range('X1').Value2 -ne 'MANUAL' -or [string]$workbook.Worksheets.Item('COSTS').Range('X2').Value2 -ne 'BASELINE') { throw 'Dropdown source values are invalid.' }
 
     $excel.Run("'$($workbook.Name)'!UpdateFotoFO_LocalTest")
     $status = [string]$workbook.Worksheets.Item('MANUAL CHANGES').Range('M6').Text
