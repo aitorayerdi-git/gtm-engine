@@ -2749,8 +2749,8 @@ for Canones, optimizations, replication, and MAIN; previously those array values
 than carrying the first erroneous publication.
 ## 2026-08-12 - Foto FO costs restricted to Delta de costes
 
-Business review clarified that the Foto FO update must source costs exclusively from the
-`Delta de costes` worksheet. Canones, Optimizaciones, Index replication, and MAIN are no longer
-validated or read by this workflow. Their prior contributions explained unexpected CGA_AVB,
-CGTINDEX, CGTO, and CGA_TVB values. The published fee and replication components are now zero,
-and logistics deltas are rounded to cents after baseline and manual compensation.
+Business review clarified that the COSTS worksheet must source costs exclusively from
+`Delta de costes`. Canones and Optimizaciones continue to populate the Fees and Optimizations
+component of OPERATING FLOWS, while Index replication and MAIN continue to populate Replication;
+those P&L components are no longer copied into COSTS. Logistics deltas are rounded to cents after
+baseline and manual compensation.

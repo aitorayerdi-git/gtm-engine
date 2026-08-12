@@ -236,17 +236,25 @@ End Function
 
 Private Sub ValidateSource(ByVal wb As Workbook, ByVal targetDate As Date)
     Dim required As Variant, item As Variant
-    required = Array("Delta de costes")
+    required = Array("Canones", "Delta de costes", "Optimizaciones", "Index replication", "MAIN")
     For Each item In required
         If Not SheetExists(CStr(item), wb) Then Err.Raise vbObjectError + 2110, , "Falta la hoja obligatoria '" & item & "' en Foto FO."
     Next item
+    RequireHeader wb.Worksheets("Canones"), 1, 10, "Importe Total"
+    RequireHeader wb.Worksheets("Optimizaciones"), 1, 3, "Trade date"
+    RequireHeader wb.Worksheets("Optimizaciones"), 1, 6, "Tradebook"
+    RequireHeader wb.Worksheets("Optimizaciones"), 1, 10, "Importe"
+    RequireHeader wb.Worksheets("Optimizaciones"), 1, 12, "Strategy"
+    RequireHeader wb.Worksheets("Index replication"), 1, 1, "Fecha delivery"
+    RequireHeader wb.Worksheets("MAIN"), 1, 1, "Trade Date"
     If Not YearExists(wb.Worksheets("Delta de costes"), Year(targetDate)) Then Err.Raise vbObjectError + 2111, , "Delta de costes no contiene el año de Last Market Date."
 End Sub
 
 Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, ByVal previousDate As Date, ByVal books As Object) As Object
     Dim result As Object, book As Variant, values As Variant
     Dim snapshots As Object, previousState As Variant, stateDate As Date
-    Dim currentSnapshot As Double, manualCost As Double, baselineCost As Double
+    Dim currentSnapshot As Double, feeAmount As Double, optim As Double, replication As Double
+    Dim manualCost As Double, manualFees As Double, baselineCost As Double, baselineFees As Double
     Set result = CreateObject("Scripting.Dictionary"): result.CompareMode = vbTextCompare
     Set snapshots = LogisticsSnapshots(wb.Worksheets("Delta de costes"))
     For Each book In books.Keys
@@ -257,21 +265,29 @@ Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, 
             stateDate = BaselineDate()
             previousState = Array(stateDate, 0#, 0#, 0#)
             baselineCost = CostRowAdjustment(CStr(book), "BASELINE", stateDate, False)
+            baselineFees = CostRowAdjustment(CStr(book), "BASELINE", stateDate, True)
         Else
-            baselineCost = 0#
+            baselineCost = 0#: baselineFees = 0#
         End If
         If stateDate > targetDate Then Err.Raise vbObjectError + 2116, , "El estado de Foto FO es posterior a Last Market Date."
         currentSnapshot = 0#
         If snapshots.Exists(CStr(book)) Then currentSnapshot = CDbl(snapshots(CStr(book)))
+        feeAmount = FeeSnapshot(wb.Worksheets("Canones"), CStr(book))
+        optim = OptimizationFlow(wb.Worksheets("Optimizaciones"), CStr(book), previousDate, targetDate)
+        replication = ReplicationFlow(wb, CStr(book), targetDate)
         manualCost = ManualCostAdjustment(CStr(book), stateDate, targetDate, False)
+        manualFees = ManualCostAdjustment(CStr(book), stateDate, targetDate, True)
         If stateDate = targetDate Then
             values(0) = ExistingFlowValue(CStr(book), targetDate, 3) + CDbl(previousState(1)) - currentSnapshot
+            values(1) = ExistingFlowValue(CStr(book), targetDate, 4) + feeAmount - CDbl(previousState(2)) + optim - CDbl(previousState(3))
         Else
             values(0) = CDbl(previousState(1)) - currentSnapshot
+            values(1) = feeAmount - CDbl(previousState(2)) + optim
         End If
         values(0) = Round(values(0) - manualCost - baselineCost, 2)
-        values(1) = 0#: values(2) = 0#
-        values = Array(values(0), values(1), values(2), currentSnapshot, 0#, 0#)
+        values(1) = Round(values(1) - manualFees - baselineFees, 2)
+        values(2) = Round(replication, 2)
+        values = Array(values(0), values(1), values(2), currentSnapshot, feeAmount, optim)
         result(CStr(book)) = values
     Next book
     Set CalculateFlows = result
@@ -502,9 +518,7 @@ Private Sub PublishCosts(ByVal values As Object, ByVal targetDate As Date, ByVal
     For Each book In books.Keys
         parts = values(CStr(book))
         columnIndex = CostColumn(CStr(book), False)
-        If columnIndex > 0 Then ws.Cells(targetRow, columnIndex).Value = CDbl(parts(0)) + CDbl(parts(2))
-        columnIndex = CostColumn(CStr(book), True)
-        If columnIndex > 0 Then ws.Cells(targetRow, columnIndex).Value = CDbl(parts(1))
+        If columnIndex > 0 Then ws.Cells(targetRow, columnIndex).Value = CDbl(parts(0))
     Next book
     ws.Cells(targetRow, 17).FormulaR1C1 = "=SUM(RC[-15]:RC[-1])"
     ws.Cells(targetRow, 18).Value = "AUTO"
