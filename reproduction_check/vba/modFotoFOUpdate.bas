@@ -15,6 +15,10 @@ Public Sub UpdateFotoFO()
     UpdateFotoFOCore FOTO_URL, False
 End Sub
 
+Public Sub UpdateFotoFO_Automated()
+    UpdateFotoFOCore FOTO_URL, True
+End Sub
+
 Public Sub UpdateFotoFO_LocalTest()
     Dim localPath As String
     localPath = ThisWorkbook.Path & "\..\verification\Foto FO.xlsx"
@@ -261,7 +265,7 @@ Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, 
         values = Array(0#, 0#, 0#)
         previousState = ReadState(CStr(book))
         stateDate = CDate(previousState(0))
-        If BaselineDate() > stateDate Then
+        If BaselineDate() > 0 And (BaselineDate() > stateDate Or IsFirstAutomaticDateAfterBaseline(targetDate)) Then
             stateDate = BaselineDate()
             previousState = Array(stateDate, 0#, 0#, 0#)
             baselineCost = CostRowAdjustment(CStr(book), "BASELINE", stateDate, False)
@@ -303,6 +307,21 @@ Private Function CalculateFlows(ByVal wb As Workbook, ByVal targetDate As Date, 
     Set CalculateFlows = result
 End Function
 
+Private Function IsFirstAutomaticDateAfterBaseline(ByVal targetDate As Date) As Boolean
+    Dim ws As Worksheet, lastRow As Long, r As Long, baseline As Date, rowDate As Date
+    baseline = BaselineDate()
+    If baseline = 0 Or targetDate <= baseline Then Exit Function
+    Set ws = ThisWorkbook.Worksheets(SH_COSTS)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, 18).Value)), "AUTO", vbTextCompare) = 0 And IsDate(ws.Cells(r, 1).Value) Then
+            rowDate = DateValue(ws.Cells(r, 1).Value)
+            If rowDate > baseline And rowDate < targetDate Then Exit Function
+        End If
+    Next r
+    IsFirstAutomaticDateAfterBaseline = True
+End Function
+
 Private Function CostRowAdjustment(ByVal book As String, ByVal sourceType As String, ByVal rowDate As Date, ByVal feeColumn As Boolean) As Double
     Dim ws As Worksheet, lastRow As Long, r As Long, columnIndex As Long
     columnIndex = CostColumn(book, feeColumn)
@@ -340,7 +359,7 @@ Private Function FeeSnapshot(ByVal ws As Worksheet, ByVal book As String) As Dou
     Else
         Exit Function
     End If
-    FeeSnapshot = -SumCanonesAfterCutoff(ws, DateSerial(2025, 12, 31), op1, op2)
+    FeeSnapshot = SumCanonesAfterCutoff(ws, DateSerial(2025, 12, 31), op1, op2)
 End Function
 
 Private Function OptimizationFlow(ByVal ws As Worksheet, ByVal book As String, ByVal previousDate As Date, ByVal targetDate As Date) As Double
@@ -352,8 +371,8 @@ Private Function OptimizationFlow(ByVal ws As Worksheet, ByVal book As String, B
     If lastRow < 2 Then Exit Function
     data = ws.Range("A2:L" & lastRow).Value2
     For r = 2 To lastRow
-        If IsDate(data(r - 1, 3)) And StrComp(Trim$(CStr(data(r - 1, 12))), strategy, vbTextCompare) = 0 Then
-            tradeDate = DateValue(data(r - 1, 3))
+        If (IsDate(data(r - 1, 3)) Or IsNumeric(data(r - 1, 3))) And StrComp(Trim$(CStr(data(r - 1, 12))), strategy, vbTextCompare) = 0 Then
+            tradeDate = DateValue(CDate(data(r - 1, 3)))
             If tradeDate > previousDate And tradeDate <= targetDate Then OptimizationFlow = OptimizationFlow + NzNumber(data(r - 1, 10))
         End If
     Next r
@@ -366,8 +385,8 @@ Private Function ReplicationFlow(ByVal wb As Workbook, ByVal book As String, ByV
         lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         If lastRow >= 2 Then data = ws.Range("A2:J" & lastRow).Value2
         For r = 2 To lastRow
-            If IsDate(data(r - 1, 1)) Then
-                economicDate = DateValue(data(r - 1, 1))
+            If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
+                economicDate = DateValue(CDate(data(r - 1, 1)))
                 If AppliedMarketDate(economicDate) = targetDate Then
                     If StrComp(book, "CGTO", vbTextCompare) = 0 Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 9))
                     If StrComp(book, "CGTINDEX", vbTextCompare) = 0 Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 10))
@@ -380,8 +399,8 @@ Private Function ReplicationFlow(ByVal wb As Workbook, ByVal book As String, ByV
         lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         If lastRow >= 2 Then data = ws.Range("A2:C" & lastRow).Value2
         For r = 2 To lastRow
-            If IsDate(data(r - 1, 1)) Then
-                economicDate = DateValue(data(r - 1, 1))
+            If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
+                economicDate = DateValue(CDate(data(r - 1, 1)))
                 If AppliedMarketDate(economicDate) = targetDate Then ReplicationFlow = ReplicationFlow + NzNumber(data(r - 1, 3))
             End If
         Next r
@@ -580,8 +599,8 @@ Private Function SumCanonesAfterCutoff(ByVal ws As Worksheet, ByVal cutoffDate A
     If lastRow < 2 Then Exit Function
     data = ws.Range("A2:J" & lastRow).Value2
     For r = 2 To lastRow
-        If IsDate(data(r - 1, 1)) Then
-            startDate = DateValue(data(r - 1, 1))
+        If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
+            startDate = DateValue(CDate(data(r - 1, 1)))
             operation = Trim$(CStr(data(r - 1, 3)))
             If startDate > cutoffDate And (StrComp(operation, operation1, vbTextCompare) = 0 Or (Len(operation2) > 0 And StrComp(operation, operation2, vbTextCompare) = 0)) Then
                 SumCanonesAfterCutoff = SumCanonesAfterCutoff + NzNumber(data(r - 1, 10))

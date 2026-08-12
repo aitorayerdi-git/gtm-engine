@@ -2,7 +2,7 @@ param([Parameter(Mandatory = $true)][string]$BasePath)
 $ErrorActionPreference = 'Stop'
 $testDirectory = Split-Path -Parent $BasePath
 
-function Invoke-BaselineCase([string]$Path, [double]$BaselineAmount) {
+function Invoke-BaselineCase([string]$Path, [double]$BaselineAmount, [bool]$CorrectAfterFirstRun = $false) {
     Copy-Item -LiteralPath $BasePath -Destination $Path -Force
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false; $excel.DisplayAlerts = $false; $excel.EnableEvents = $false
@@ -32,7 +32,8 @@ function Invoke-BaselineCase([string]$Path, [double]$BaselineAmount) {
         $costs = $workbook.Worksheets.Item('COSTS')
         $costs.Range('A5:U504').ClearContents()
         $costs.Range('A5').Value2 = $baselineDate.ToOADate()
-        $costs.Range('B5').Value2 = $BaselineAmount
+        $initialBaselineAmount = if ($CorrectAfterFirstRun) { -$BaselineAmount } else { $BaselineAmount }
+        $costs.Range('B5').Value2 = $initialBaselineAmount
         $costs.Range('Q5').Formula = '=SUM(B5:P5)'
         $costs.Range('R5').Value2 = 'BASELINE'
         $costs.Range('S5').Value2 = (Get-Date).ToOADate()
@@ -50,6 +51,12 @@ function Invoke-BaselineCase([string]$Path, [double]$BaselineAmount) {
         $excel.Run("'$($workbook.Name)'!UpdateFotoFO_LocalTest")
         $status = [string]$workbook.Worksheets.Item('MANUAL CHANGES').Range('M6').Text
         if (-not $status.StartsWith('OK')) { throw "Baseline macro failed: $status" }
+        if ($CorrectAfterFirstRun) {
+            $costs.Range('B5').Value2 = $BaselineAmount
+            $excel.Run("'$($workbook.Name)'!UpdateFotoFO_LocalTest")
+            $status = [string]$workbook.Worksheets.Item('MANUAL CHANGES').Range('M6').Text
+            if (-not $status.StartsWith('OK')) { throw "Baseline rerun failed: $status" }
+        }
         $flow = $null; $baselineRowsAfter = 0
         for ($r = 1; $r -le $table.ListRows.Count; $r++) {
             $raw = $table.DataBodyRange.Cells($r, 1).Value2
@@ -73,12 +80,17 @@ function Invoke-BaselineCase([string]$Path, [double]$BaselineAmount) {
 
 $zeroOutput = @(Invoke-BaselineCase (Join-Path $testDirectory 'baseline_zero.xlsm') 0)
 $adjustedOutput = @(Invoke-BaselineCase (Join-Path $testDirectory 'baseline_adjusted.xlsm') 123.45)
+$correctedOutput = @(Invoke-BaselineCase (Join-Path $testDirectory 'baseline_corrected_rerun.xlsm') 123.45 $true)
 $zero = [double]$zeroOutput[-1]
 $adjusted = [double]$adjustedOutput[-1]
+$corrected = [double]$correctedOutput[-1]
 $difference = [math]::Round($zero - $adjusted, 2)
 if ([math]::Abs($difference - 123.45) -gt 0.01) { throw "Expected baseline difference 123.45, got $difference" }
+if ([math]::Abs($corrected - $adjusted) -gt 0.01) { throw "Corrected same-date rerun did not rebuild the first AUTO row." }
 Write-Output "ZERO_BASELINE_FLOW=$zero"
 Write-Output "ADJUSTED_BASELINE_FLOW=$adjusted"
 Write-Output "BASELINE_DEDUCTION=$difference"
+Write-Output "CORRECTED_RERUN_FLOW=$corrected"
+Write-Output 'SAME_DATE_REBUILD=OK'
 Write-Output 'BASELINE_NOT_PUBLISHED=OK'
 Write-Output 'BASELINE_TEST=OK'

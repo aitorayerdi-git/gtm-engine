@@ -2736,3 +2736,14 @@ amounts, and a missing explanatory comment. The Excel regression proved that a E
 balance reduces the first automatic CGA_SHT1 flow by exactly EUR 123.45 without changing the
 pre-existing OPERATING FLOWS population for the baseline date. Manual compensation and missed-date
 guard regressions continued to pass.
+## 2026-08-12 - Idempotent first AUTO rebuild and fee sign correction
+
+Re-running the first AUTO Market Date after correcting BASELINE or MANUAL inputs now rebuilds the
+row from the current Foto FO cumulative snapshots, baseline, and intervening manual deltas. It no
+longer carries the previously published first-day flow through the same-date incremental path.
+
+The Canones cumulative snapshot now retains the sign stored by Foto FO, consistently with the
+COSTS contract and the manual baseline. Excel serial dates loaded through `Value2` are accepted
+for Canones, optimizations, replication, and MAIN; previously those array values were skipped by
+`IsDate`. The saved 11 August case now rebuilds its logistics values from corrected inputs rather
+than carrying the first erroneous publication.
