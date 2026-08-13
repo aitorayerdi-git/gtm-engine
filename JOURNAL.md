@@ -2804,3 +2804,136 @@ and CGTO 2,407.39. The independent 31 July Replication check was CGTINDEX -2,460
 Repository main is synchronized with `aitorayerdi/main`. The next session should start from the
 saved Input workbook and review downstream P&L output/rebuild behavior after the complete August
 OPERATING FLOWS backfill.
+
+## 2026-08-13 - August downstream P&L rebuild review
+
+The saved `reproduction_check/Input data.xlsm` contains the expected 91 August OPERATING FLOWS
+rows: complete 13-BOOK sets for 3, 4, 5, 6, 7, 10, and 11 August 2026. The downstream Python P&L
+builder consumes those rows at BOOK level, applies the configured Logistics multiplier of -1,
+adds Fees and Optimizations plus Replication, and includes the result in daily and cumulative
+P&L.
+
+The operative CONTROL horizon has not yet been advanced: Historical End Date remains 10 July
+2026. A value-only, isolated rebuild through that date published with zero validation findings,
+but correctly excluded all August rows. An isolated copy with Historical End Date advanced to
+11 August failed closed with 1,047 `MISSING_CURVE_PRICE` errors. CURVE PRICES and FX RATES both
+end on 10 July, while FIXING PRICES already extend through 2028. The first missing curve key is on
+13 July 2026.
+
+Before exposure P&L can be rebuilt through 11 August, extend the required curve-price matrix (and
+any material non-EUR FX series) from 13 July through 11 August. Then advance the CONTROL horizon
+and run the authoritative rebuild. Do not advance the live horizon before the required market
+data are present: the fail-closed result is intentional.
+
+As a component-only control, the seven August OPERATING FLOWS dates sum to source Logistics
+EUR 6,991.07, Fees and Optimizations EUR 67,357.17, and Replication EUR 125,859.11. With the
+configured Logistics sign, their combined operating contribution to daily P&L is EUR 186,225.21.
+This is not a complete August Total P&L because Exposure MtM and fixing economics remain blocked
+until the curves are loaded.
+
+## 2026-08-13 - Single MANUAL date authority
+
+All operative dates were moved from CONTROL into `MANUAL CHANGES!tblManualDates`. The table holds
+Initial Market Date, Historical Start Date, the single Historical End Date / Last Market Date,
+and the first and last Delivery Months displayed in the Exposure report. The Foto FO macro and
+the Python Excel adapter now read the same Historical End Date authority; the former F5 cell is a
+display formula only. CONTROL retains non-date technical settings. The live workbook was migrated
+without rebuilding it from the older `.xlsx`, preserving the August COSTS and OPERATING FLOWS.
+
+## 2026-08-13 - Automatic historical Foto FO rebuild
+
+`UPDATE FOTO FO` now reviews every configured Market Date from Historical Start Date through the
+single Historical End Date. It recalculates Canones plus Optimizaciones and Replication from the
+current Foto FO source, compares complete 13-BOOK results with OPERATING FLOWS, and replaces only
+dates whose values changed. Source ranges and existing flows are indexed in memory before
+comparison. Historical Logistics remains sourced from the existing COSTS/OPERATING FLOWS history,
+because Delta de costes exposes the current cumulative snapshot rather than reconstructible daily
+snapshots; the final Market Date Logistics continues to be calculated normally. BASELINE and
+MANUAL COSTS rows are not overwritten.
+
+An isolated full run reviewed 156 Market Dates and rebuilt 74 changed dates. A second run over the
+same source reviewed all 156 dates, found zero changes, and published zero rows, confirming
+idempotence. The complete second test cycle, including Excel startup, module installation, macro
+execution, save, and shutdown, took 89 seconds; the macro portion was approximately one minute.
+
+## 2026-08-13 - Reuters curve publication preflight
+
+A two-stage Reuters publisher was prepared: Python normalizes the cached TTF, Brent Dated, HH,
+EURF, PVB-TTF and PEG-TTF matrices, while Excel writes the resulting values in bulk so the live
+`.xlsm`, macros and external-link metadata are preserved. Publication is an upsert and retains
+existing normalized history where the Reuters staging matrix is blank.
+
+The corrected isolated run produced 47,349 curve-price rows and 174 FX rows. The engine preflight
+reduced the prior 1,047 missing-price findings to 469, but correctly remained FAILED. All remaining
+findings are `MISSING_CURVE_PRICE`: 57 Index PVB, 56 each AVB/PEG/Phys PVB/TVB, 55 HH, 50 TTF DA,
+42 Brent Dated and 41 TTF MA. The copied Reuters source has effective curve observations only
+through 29 July 2026; the PVB-TTF and PEG-TTF matrices do not provide the required August spread
+coverage. EURF/FX extends farther, so FX is no longer the blocking category.
+
+Nothing was promoted to `reproduction_check/Input data.xlsm`. Refresh or supply complete Reuters
+curve and spread caches through Historical End Date (12 August 2026), then rerun the publisher and
+the fail-closed engine preflight before advancing the authoritative P&L output.
+
+## 2026-08-13 - Reuters curves published through 12 August
+
+The refreshed Reuters/MarketView source reaches 12 August 2026 for TTF, Brent Dated, HH, EURF,
+PVB-TTF and PEG-TTF. Two reviewed spread-source exceptions, 22 July and 6 August, use the
+immediately preceding available PVB-TTF and PEG-TTF snapshots. HH contains later-contract values
+on 30 and 31 July but its August contract cells are blank after expiry; those two August-contract
+valuations retain the last available 29 July HH price.
+
+The final normalized input contains 50,125 curve-price rows and 183 FX rows. An isolated
+authoritative value-only build published successfully as `GTM3-98DEFF2420A80186A4C9`, with zero
+errors, warnings or informational validation findings. The validated `.xlsm` was then promoted to
+`reproduction_check/Input data.xlsm`, retaining a pre-Reuters backup alongside it.
+
+## 2026-08-13 - PVB/TTF and PEG/TTF refresh macro in Input
+
+The legacy `Actualizar_PVB_PEG_TTF` workflow from `Gas_Trading_Model 070826.xlsm` was incorporated
+into `Input data.xlsm` as the stable module `modPvbPegTtfUpdate`. It opens the corporate
+`LOCATIONSP.xlsx` source read-only, recalculates only the PVB-TTF and PEG-TTF staging sheets,
+preserves their Market Day formulas in column B, closes the source without saving, restores Excel
+application state, and reports either the common latest Market Date or the actual refresh error.
+
+`MANUAL CHANGES` now contains an `UPDATE PVB/TTF + PEG/TTF` button bound to
+`Actualizar_PVB_PEG_TTF`. Installation and button binding were verified first in an isolated copy
+and then read-only in the operative workbook. The macro was not auto-run because SharePoint access
+and its completion message are intentionally interactive. A pre-installation workbook backup is
+stored as `Input data pre PVB PEG macro 20260813.xlsm`.
+
+## 2026-08-13 - Historical MarketView data and source controls
+
+The legacy `Historical_DA` sheet was copied into `Input data.xlsm` with its Storm/MarketView
+formulas for TTF Heren day-ahead/weekend/month-ahead, PVB and PEG Heren, custom TTF delivery and
+Brent Dated. `modMarketDataRefresh` adds `UPDATE REUTERS + MARKETVIEW` and `REFRESH STATUS`
+actions. The update action recalculates TTF, Brent Dated, HH, EURF and Historical_DA, waits for
+Excel asynchronous queries, then records the refresh timestamp and source coverage.
+
+`MANUAL CHANGES!tblMarketDataStatus` displays Reuters and MarketView Last Refresh At, Latest Data
+Date and status. Latest Data Date is conservative: the minimum of the latest valid dates across
+all relevant series in that source, compared with the single Historical End Date. Copying the
+Storm sheet into another workbook does not preserve every recent cached XLL result, so MarketView
+initially remains CHECK until an authenticated operator runs the new update button. Reuters is OK
+through 12 August 2026. The pre-installation backup is
+`Input data pre Historical DA 20260813.xlsm`.
+
+## 2026-08-13 - End-of-day handoff after market-data integration
+
+The operative workbook is `reproduction_check/Input data.xlsm`. It now includes the Reuters curve
+staging sheets, normalized CURVE PRICES/FX RATES, the PVB-TTF and PEG-TTF SharePoint refresh macro,
+the MarketView `Historical_DA` sheet, and the market-data status panel in MANUAL CHANGES. The last
+fully validated headless build was `GTM3-98DEFF2420A80186A4C9`, published with zero findings before
+Historical_DA was added. The later workbook-only additions preserve the authoritative normalized
+tables.
+
+Tomorrow, open Input data with the MarketView/Storm add-in authenticated and press
+`UPDATE REUTERS + MARKETVIEW`. Wait for the completion message, then confirm that both Reuters and
+MarketView show Latest Data Date 12 August 2026 and status OK. `REFRESH STATUS` only rechecks the
+cached coverage and does not download data. If the PVB-TTF/PEG-TTF SharePoint source also needs a
+refresh, run its separate button first. After the controls are OK, rerun the Reuters normalization
+publisher and the value-only fail-closed build before treating downstream P&L as authoritative.
+
+Backups retained beside the operative workbook include `Input data pre Reuters 20260813.xlsm`,
+`Input data pre PVB PEG macro 20260813.xlsm`, and `Input data pre Historical DA 20260813.xlsm`.
+Test workbooks and `.reuters-*` validation directories are local disposable evidence and are not
+part of the source commit.

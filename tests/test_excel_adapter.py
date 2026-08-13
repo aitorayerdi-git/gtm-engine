@@ -101,7 +101,9 @@ def test_excel_template_round_trip_contract_and_setup_mapping(tmp_path: Path) ->
     try:
         assert tuple(workbook.sheetnames) == SHEET_ORDER
         assert workbook["START HERE"]["B4"].value == "NOT BUILT"
-        assert workbook["CONTROL"]["B12"].value == "OFF"
+        assert workbook["CONTROL"]["B9"].value == "OFF"
+        assert "tblManualDates" in workbook["MANUAL CHANGES"].tables
+        assert workbook["MANUAL CHANGES"]["B7"].value.date() == date(2026, 1, 9)
         assert workbook["TRADES"].freeze_panes == "A5"
         assert "tblTrades" in workbook["TRADES"].tables
         assert workbook["TRADES"].sheet_view.showGridLines is False

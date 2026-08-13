@@ -258,7 +258,24 @@ OUTPUT_TABLES = (
     ),
 )
 
-CONTROL_FIELDS = tuple(BuildConfig.model_fields)
+MANUAL_DATE_FIELDS = (
+    "initial_market_date",
+    "historical_start_date",
+    "historical_end_date",
+    "exposure_report_start_month",
+    "exposure_report_end_month",
+)
+CONTROL_FIELDS = tuple(field for field in BuildConfig.model_fields if field not in MANUAL_DATE_FIELDS)
+MANUAL_DATE_DESCRIPTIONS = {
+    "initial_market_date": "Closing date represented by INITIAL EXPOSURE and INITIAL PNL.",
+    "historical_start_date": "First Market Date reconstructed by the engine.",
+    "historical_end_date": (
+        "Single Last Market Date for Foto FO, Fixings, Costs, Fees, Optimizations, "
+        "Replication, Exposure and P&L."
+    ),
+    "exposure_report_start_month": "First Delivery Month displayed in the Exposure report.",
+    "exposure_report_end_month": "Last Delivery Month displayed in the Exposure report.",
+}
 CONTROL_DESCRIPTIONS = {
     "model_id": "Stable model identifier.",
     "schema_version": "Input/output contract version; do not edit unless upgraded.",
@@ -275,6 +292,7 @@ CONTROL_DESCRIPTIONS = {
 
 SHEET_ORDER = (
     "START HERE",
+    "MANUAL CHANGES",
     "CONTROL",
     *(spec.sheet for spec in INPUT_TABLES),
     *(spec.sheet for spec in OUTPUT_TABLES),
@@ -440,7 +458,22 @@ def _read_control(workbook: Any) -> BuildConfig:
         if field in values:
             raise ExcelAdapterError(f"Duplicate CONTROL field at Excel row {row_number}: {field}")
         values[field] = _clean_value(value_cell.value)
-    missing = [field for field in CONTROL_FIELDS if field not in values]
+    if "tblManualDates" in workbook["MANUAL CHANGES"].tables:
+        manual_sheet, manual_table = _find_table(workbook, "tblManualDates")
+        manual_min_col, manual_min_row, manual_max_col, manual_max_row = _table_bounds(manual_table)
+        if manual_max_col - manual_min_col + 1 != 3:
+            raise ExcelAdapterError("tblManualDates must contain Field, Date and Explanation")
+        for row_number in range(manual_min_row + 1, manual_max_row + 1):
+            field_cell = manual_sheet.cell(row_number, manual_min_col)
+            date_cell = manual_sheet.cell(row_number, manual_min_col + 1)
+            if field_cell.data_type == "f" or date_cell.data_type == "f":
+                coordinate = field_cell.coordinate if field_cell.data_type == "f" else date_cell.coordinate
+                raise ExcelAdapterError(f"Formula not allowed in tblManualDates: {coordinate}")
+            field = _normalize_header(field_cell.value)
+            if field not in MANUAL_DATE_FIELDS:
+                raise ExcelAdapterError(f"Unknown MANUAL date field at Excel row {row_number}: {field}")
+            values[field] = _clean_value(date_cell.value)
+    missing = [field for field in BuildConfig.model_fields if BuildConfig.model_fields[field].is_required() and field not in values]
     if missing:
         raise ExcelAdapterError(f"CONTROL is missing field(s): {', '.join(missing)}")
     try:
@@ -638,6 +671,8 @@ def _control_rows(config: BuildConfig | None) -> list[dict[str, Any]]:
         "initial_market_date": None,
         "historical_start_date": None,
         "historical_end_date": None,
+        "exposure_report_start_month": None,
+        "exposure_report_end_month": None,
         "simulation_status": "OFF",
         "timezone": "Europe/Madrid",
         "logistics_sign": Decimal("-1"),
@@ -653,6 +688,37 @@ def _control_rows(config: BuildConfig | None) -> list[dict[str, Any]]:
         }
         for field in CONTROL_FIELDS
     ]
+
+
+def _add_manual_dates_sheet(workbook: Workbook, config: BuildConfig | None) -> None:
+    sheet = workbook.create_sheet("MANUAL CHANGES")
+    _title_and_note(
+        sheet,
+        "MANUAL CHANGES — MODEL DATES",
+        "Enter every operative model date here. The Last Market Date is the single date used by the daily process.",
+        3,
+    )
+    for column, header in enumerate(("Field", "Date", "Explanation"), start=1):
+        cell = sheet.cell(4, column, header)
+        cell.fill = INPUT_HEADER_FILL
+        cell.font = WHITE_FONT
+    values = config.model_dump(mode="python") if config is not None else {}
+    for row_number, field in enumerate(MANUAL_DATE_FIELDS, start=5):
+        sheet.cell(row_number, 1, _display_header(field))
+        _set_cell(sheet.cell(row_number, 2), values.get(field))
+        sheet.cell(row_number, 3, MANUAL_DATE_DESCRIPTIONS[field])
+        for column in range(1, 4):
+            sheet.cell(row_number, column).border = TABLE_BORDER
+        sheet.cell(row_number, 2).fill = ATTENTION_FILL
+        sheet.cell(row_number, 2).number_format = "yyyy-mm-dd"
+    sheet.column_dimensions["A"].width = 32
+    sheet.column_dimensions["B"].width = 18
+    sheet.column_dimensions["C"].width = 85
+    table = Table(displayName="tblManualDates", ref="A4:C9")
+    table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+    sheet.add_table(table)
+    sheet.freeze_panes = "A5"
+    sheet.sheet_view.showGridLines = False
 
 
 def _add_control_sheet(workbook: Workbook, config: BuildConfig | None) -> None:
@@ -878,6 +944,7 @@ def create_excel_template(
         raise ExcelAdapterError("Cannot initialize Excel workbook")
     workbook.remove(default_sheet)
     _add_start_sheet(workbook)
+    _add_manual_dates_sheet(workbook, bundle.config if bundle else None)
     _add_control_sheet(workbook, bundle.config if bundle else None)
     bundle_rows: dict[str, Sequence[BaseModel]] = {}
     if bundle is not None:
@@ -1053,6 +1120,8 @@ def _daily_report_book_month_rows(rows: Sequence[PnlRow]) -> list[tuple[Any, ...
 def _daily_report_exposure_rows(
     d2: date,
     rows: Sequence[PnlRow],
+    report_start: date | None = None,
+    report_end: date | None = None,
 ) -> list[tuple[Any, ...]]:
     totals: defaultdict[tuple[date, str], Decimal] = defaultdict(lambda: Decimal("0"))
     delivery_months: set[date] = set()
@@ -1062,11 +1131,16 @@ def _daily_report_exposure_rows(
         delivery_months.add(row.delivery_month)
         totals[(row.delivery_month, row.underlying)] += row.delta_exposure_mtm
 
-    start = date(d2.year, 1, 1)
-    end = date(d2.year + 2, 12, 1)
-    if delivery_months:
+    start = report_start or date(d2.year, 1, 1)
+    end = report_end or date(d2.year + 2, 12, 1)
+    if delivery_months and report_start is None:
         start = min(start, min(delivery_months))
+    if delivery_months and report_end is None:
         end = max(end, max(delivery_months))
+    if start.day != 1 or end.day != 1 or end < start:
+        raise ExcelAdapterError(
+            "Exposure report dates must be first-of-month values and End must not precede Start"
+        )
 
     output: list[tuple[Any, ...]] = []
     delivery_month = start
@@ -1101,7 +1175,9 @@ def _write_daily_report_rows(
                 cell.number_format = DAILY_REPORT_NUMBER_FORMAT
 
 
-def _write_daily_report_d2(workbook: Any, result: BuildResult) -> None:
+def _write_daily_report_d2(
+    workbook: Any, result: BuildResult, config: BuildConfig
+) -> None:
     if DAILY_REPORT_SHEET in workbook.sheetnames:
         workbook.remove(workbook[DAILY_REPORT_SHEET])
     if result.manifest.status is not BuildStatus.PUBLISHED:
@@ -1111,7 +1187,12 @@ def _write_daily_report_d2(workbook: Any, result: BuildResult) -> None:
     pnl_rows = tuple(row for row in result.pnl if row.market_date == d2)
     book_rows = _daily_report_book_rows(pnl_rows)
     book_month_rows = _daily_report_book_month_rows(pnl_rows)
-    exposure_rows = _daily_report_exposure_rows(d2, pnl_rows)
+    exposure_rows = _daily_report_exposure_rows(
+        d2,
+        pnl_rows,
+        config.exposure_report_start_month,
+        config.exposure_report_end_month,
+    )
 
     position = workbook.sheetnames.index("EVENT LEDGER")
     sheet = workbook.create_sheet(DAILY_REPORT_SHEET, position)
@@ -1289,7 +1370,7 @@ def write_result_workbook(
         }
         for spec in OUTPUT_TABLES:
             _replace_table_records(workbook, spec, output_rows[spec.table])
-        _write_daily_report_d2(workbook, result)
+        _write_daily_report_d2(workbook, result, _read_control(workbook))
         _replace_manifest(workbook, result.manifest)
         _update_start_sheet(workbook, result)
         workbook.active = 0

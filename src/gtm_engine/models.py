@@ -83,6 +83,8 @@ class BuildConfig(StrictModel):
     initial_market_date: date
     historical_start_date: date
     historical_end_date: date
+    exposure_report_start_month: date | None = None
+    exposure_report_end_month: date | None = None
     simulation_status: SimulationStatus = SimulationStatus.OFF
     timezone: str = "Europe/Madrid"
     logistics_sign: Decimal = Decimal("-1")

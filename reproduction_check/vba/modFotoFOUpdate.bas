@@ -10,6 +10,10 @@ Private Const SH_CALENDAR As String = "MARKET CALENDAR"
 Private Const SH_BOOKS As String = "BOOKS"
 Private Const SH_STATE As String = "FOTO FO STATE"
 Private mAppliedDateCache As Object
+Private mHistoricalFees As Object
+Private mHistoricalOptimizations As Object
+Private mHistoricalReplication As Object
+Private mHistoricalExisting As Object
 
 Public Sub UpdateFotoFO()
     UpdateFotoFOCore FOTO_URL, False
@@ -31,7 +35,7 @@ Private Sub UpdateFotoFOCore(ByVal sourcePath As String, ByVal localTest As Bool
     Dim oldCalc As XlCalculation, oldEvents As Boolean, oldScreen As Boolean, oldAlerts As Boolean
     Dim flowValues As Object, activeBooks As Object, book As Variant
     Dim sourceLabel As String, statusText As String, detailText As String
-    Dim rowCount As Long, nonZeroCount As Long
+    Dim rowCount As Long, nonZeroCount As Long, reviewedDates As Long, changedDates As Long
 
     startedAt = Now
     oldCalc = Application.Calculation
@@ -58,13 +62,12 @@ Private Sub UpdateFotoFOCore(ByVal sourcePath As String, ByVal localTest As Bool
     ValidateSource sourceBook, targetDate
     Set flowValues = CalculateFlows(sourceBook, targetDate, previousDate, activeBooks)
     ValidateCalculatedFlows flowValues, activeBooks
-    PublishManualBackfill sourceBook, targetDate, activeBooks
-    PublishFlows flowValues, targetDate, activeBooks, rowCount, nonZeroCount
+    RebuildHistoricalFlows sourceBook, targetDate, activeBooks, flowValues, reviewedDates, changedDates, rowCount, nonZeroCount
     PublishCosts flowValues, targetDate, activeBooks
     SaveState flowValues, targetDate, activeBooks
 
     statusText = "OK"
-    detailText = "Carga completa: " & rowCount & " BOOK; " & nonZeroCount & " con importe distinto de cero."
+    detailText = "Rebuild completo: " & reviewedDates & " fechas revisadas; " & changedDates & " modificadas; " & rowCount & " filas publicadas."
     WriteAudit startedAt, Now, targetDate, sourceLabel, statusText, detailText, rowCount, activeBooks.Count
     UpdateManualStatus Now, targetDate, sourceLabel, statusText, detailText
 
@@ -84,6 +87,224 @@ Failed:
     On Error GoTo 0
     If Not localTest Then MsgBox "No se ha publicado la actualización." & vbCrLf & detailText, vbCritical, "Foto FO - ERROR"
 End Sub
+
+Private Sub RebuildHistoricalFlows(ByVal wb As Workbook, ByVal targetDate As Date, ByVal books As Object, ByVal targetValues As Object, ByRef reviewedDates As Long, ByRef changedDates As Long, ByRef rowCount As Long, ByRef nonZeroCount As Long)
+    Dim calendarSheet As Worksheet, lastRow As Long, r As Long
+    Dim startDate As Date, marketDate As Date, priorDate As Date
+    Dim allValues As Object, dateValues As Object, book As Variant, parts As Variant
+    Dim dateKey As String, changed As Boolean
+
+    startDate = ReadHistoricalStartDate()
+    BuildExistingFlowCache
+    BuildHistoricalCaches wb, startDate, targetDate
+    Set allValues = CreateObject("Scripting.Dictionary")
+    Set calendarSheet = ThisWorkbook.Worksheets(SH_CALENDAR)
+    lastRow = calendarSheet.Cells(calendarSheet.Rows.Count, 1).End(xlUp).Row
+
+    ' Phase 1 is read-only: calculate and validate every date before changing outputs.
+    For r = 5 To lastRow
+        If IsDate(calendarSheet.Cells(r, 1).Value) And CBool(calendarSheet.Cells(r, 2).Value) Then
+            marketDate = DateValue(calendarSheet.Cells(r, 1).Value)
+            If marketDate >= startDate And marketDate <= targetDate Then
+                priorDate = PreviousMarketDate(marketDate)
+                Set dateValues = HistoricalFlowValues(wb, marketDate, priorDate, books, targetDate, targetValues)
+                ValidateCalculatedFlows dateValues, books
+                dateKey = CStr(CLng(marketDate))
+                allValues.Add dateKey, dateValues
+                reviewedDates = reviewedDates + 1
+            End If
+        End If
+    Next r
+    If reviewedDates = 0 Then Err.Raise vbObjectError + 2151, , "No hay Market Dates entre Historical Start Date y Historical End Date."
+
+    ' Phase 2 publishes complete 13-BOOK replacement sets only after validation succeeded.
+    For r = 5 To lastRow
+        If IsDate(calendarSheet.Cells(r, 1).Value) And CBool(calendarSheet.Cells(r, 2).Value) Then
+            marketDate = DateValue(calendarSheet.Cells(r, 1).Value)
+            dateKey = CStr(CLng(marketDate))
+            If allValues.Exists(dateKey) Then
+                Set dateValues = allValues(dateKey)
+                changed = FlowDateChanged(dateValues, marketDate, books)
+                If changed Then
+                    changedDates = changedDates + 1
+                    ReplaceFlowsForDate dateValues, marketDate, books, "FOTO-FO-REBUILD-"
+                    For Each book In books.Keys
+                        parts = dateValues(CStr(book))
+                        rowCount = rowCount + 1
+                        If Abs(CDbl(parts(0))) + Abs(CDbl(parts(1))) + Abs(CDbl(parts(2))) > 0.0000001 Then nonZeroCount = nonZeroCount + 1
+                    Next book
+                End If
+            End If
+        End If
+    Next r
+End Sub
+
+Private Function HistoricalFlowValues(ByVal wb As Workbook, ByVal marketDate As Date, ByVal priorDate As Date, ByVal books As Object, ByVal targetDate As Date, ByVal targetValues As Object) As Object
+    Dim result As Object, book As Variant, values As Variant, targetParts As Variant
+    Dim logistics As Double, fees As Double, replication As Double
+    Set result = CreateObject("Scripting.Dictionary"): result.CompareMode = vbTextCompare
+    For Each book In books.Keys
+        If marketDate = targetDate Then
+            targetParts = targetValues(CStr(book))
+            logistics = CDbl(targetParts(0))
+        Else
+            logistics = ExistingHistoricalFlow(marketDate, CStr(book), 3)
+        End If
+        fees = HistoricalCacheValue(mHistoricalFees, marketDate, CStr(book)) - HistoricalCacheValue(mHistoricalFees, priorDate, CStr(book))
+        fees = fees + HistoricalCacheValue(mHistoricalOptimizations, marketDate, CStr(book))
+        replication = HistoricalCacheValue(mHistoricalReplication, marketDate, CStr(book))
+        values = Array(Round(logistics, 2), Round(fees, 2), Round(replication, 2), 0#, 0#, 0#)
+        result(CStr(book)) = values
+    Next book
+    Set HistoricalFlowValues = result
+End Function
+
+Private Sub BuildHistoricalCaches(ByVal wb As Workbook, ByVal startDate As Date, ByVal targetDate As Date)
+    Dim ws As Worksheet, calendarSheet As Worksheet, lastRow As Long, calendarLastRow As Long
+    Dim data As Variant, r As Long, c As Long, marketDate As Date, eventDate As Date, appliedDate As Date
+    Dim operation As String, strategy As String, key As String, amount As Double
+    Dim feeEvents As Object, runningTVB As Double, runningAVB As Double, cursorDate As Date, firstFeeDate As Date
+    Set mHistoricalFees = CreateObject("Scripting.Dictionary")
+    Set mHistoricalOptimizations = CreateObject("Scripting.Dictionary")
+    Set mHistoricalReplication = CreateObject("Scripting.Dictionary")
+    Set calendarSheet = ThisWorkbook.Worksheets(SH_CALENDAR)
+    calendarLastRow = calendarSheet.Cells(calendarSheet.Rows.Count, 1).End(xlUp).Row
+
+    ' Canones: index each source row once, then roll cumulative balances by calendar day.
+    Set feeEvents = CreateObject("Scripting.Dictionary")
+    Set ws = wb.Worksheets("Canones")
+    lastRow = ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
+    If lastRow >= 2 Then data = ws.Range("A2:J" & lastRow).Value2
+    firstFeeDate = PreviousMarketDate(startDate)
+    For r = 2 To lastRow
+        If IsDate(data(r - 1, 2)) Or IsNumeric(data(r - 1, 2)) Then
+            eventDate = DateValue(CDate(data(r - 1, 2)))
+            If eventDate <= targetDate Then
+                operation = Trim$(CStr(data(r - 1, 3)))
+                amount = NzNumber(data(r - 1, 10))
+                If StrComp(operation, "PVB-TVB", vbTextCompare) = 0 Or StrComp(operation, "TVB-TVB", vbTextCompare) = 0 Then AddHistoricalCache feeEvents, eventDate, "CGA_TVB", amount
+                If StrComp(operation, "PVB-AVB", vbTextCompare) = 0 Then AddHistoricalCache feeEvents, eventDate, "CGA_AVB", amount
+            End If
+        End If
+    Next r
+    cursorDate = DateSerial(2025, 12, 31)
+    Do While cursorDate <= targetDate
+        runningTVB = runningTVB + HistoricalCacheValue(feeEvents, cursorDate, "CGA_TVB")
+        runningAVB = runningAVB + HistoricalCacheValue(feeEvents, cursorDate, "CGA_AVB")
+        If cursorDate >= firstFeeDate Then
+            AddHistoricalCache mHistoricalFees, cursorDate, "CGA_TVB", runningTVB
+            AddHistoricalCache mHistoricalFees, cursorDate, "CGA_AVB", runningAVB
+        End If
+        cursorDate = cursorDate + 1
+    Loop
+
+    ' Optimization is a daily event: assign each row once to its first configured Market Date.
+    Set ws = wb.Worksheets("Optimizaciones")
+    lastRow = ws.Cells(ws.Rows.Count, 3).End(xlUp).Row
+    If lastRow >= 2 Then data = ws.Range("A2:L" & lastRow).Value2
+    For r = 2 To lastRow
+        If IsDate(data(r - 1, 3)) Or IsNumeric(data(r - 1, 3)) Then
+            eventDate = DateValue(CDate(data(r - 1, 3)))
+            appliedDate = FirstConfiguredMarketDateOnOrAfter(eventDate, startDate, targetDate)
+            If appliedDate > 0 Then
+                strategy = Trim$(CStr(data(r - 1, 12)))
+                If StrComp(strategy, "REGAS", vbTextCompare) = 0 Then AddHistoricalCache mHistoricalOptimizations, appliedDate, "CGA_TVB", NzNumber(data(r - 1, 10))
+                If StrComp(strategy, "AASS", vbTextCompare) = 0 Then AddHistoricalCache mHistoricalOptimizations, appliedDate, "CGA_AVB", NzNumber(data(r - 1, 10))
+            End If
+        End If
+    Next r
+
+    ' Replication rows are assigned once using the confirmed prior-market-date rule.
+    Set ws = wb.Worksheets("Index replication")
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastRow >= 2 Then data = ws.Range("A2:J" & lastRow).Value2
+    For r = 2 To lastRow
+        If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
+            appliedDate = PreviousMarketDateForDelivery(DateValue(CDate(data(r - 1, 1))))
+            If appliedDate >= startDate And appliedDate <= targetDate Then
+                AddHistoricalCache mHistoricalReplication, appliedDate, "CGTO", NzNumber(data(r - 1, 9))
+                AddHistoricalCache mHistoricalReplication, appliedDate, "CGTINDEX", NzNumber(data(r - 1, 10))
+            End If
+        End If
+    Next r
+    Set ws = wb.Worksheets("MAIN")
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastRow >= 2 Then data = ws.Range("A2:C" & lastRow).Value2
+    For r = 2 To lastRow
+        If IsDate(data(r - 1, 1)) Or IsNumeric(data(r - 1, 1)) Then
+            appliedDate = PreviousMarketDateForDelivery(DateValue(CDate(data(r - 1, 1))))
+            If appliedDate >= startDate And appliedDate <= targetDate Then AddHistoricalCache mHistoricalReplication, appliedDate, "CGTINDEX", NzNumber(data(r - 1, 3))
+        End If
+    Next r
+End Sub
+
+Private Sub AddHistoricalCache(ByVal cache As Object, ByVal marketDate As Date, ByVal book As String, ByVal amount As Double)
+    Dim key As String
+    key = CStr(CLng(marketDate)) & "|" & UCase$(book)
+    If cache.Exists(key) Then cache(key) = CDbl(cache(key)) + amount Else cache.Add key, amount
+End Sub
+
+Private Function HistoricalCacheValue(ByVal cache As Object, ByVal marketDate As Date, ByVal book As String) As Double
+    Dim key As String
+    key = CStr(CLng(marketDate)) & "|" & UCase$(book)
+    If cache.Exists(key) Then HistoricalCacheValue = CDbl(cache(key))
+End Function
+
+Private Function FirstConfiguredMarketDateOnOrAfter(ByVal eventDate As Date, ByVal startDate As Date, ByVal targetDate As Date) As Date
+    Dim ws As Worksheet, lastRow As Long, r As Long, candidate As Date
+    Set ws = ThisWorkbook.Worksheets(SH_CALENDAR)
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 5 To lastRow
+        If IsDate(ws.Cells(r, 1).Value) And CBool(ws.Cells(r, 2).Value) Then
+            candidate = DateValue(ws.Cells(r, 1).Value)
+            If candidate >= eventDate And candidate >= startDate And candidate <= targetDate Then FirstConfiguredMarketDateOnOrAfter = candidate: Exit Function
+        End If
+    Next r
+End Function
+
+Private Function FlowDateChanged(ByVal values As Object, ByVal marketDate As Date, ByVal books As Object) As Boolean
+    Dim book As Variant, parts As Variant
+    For Each book In books.Keys
+        parts = values(CStr(book))
+        If Abs(ExistingHistoricalFlow(marketDate, CStr(book), 3) - CDbl(parts(0))) > 0.005 Or _
+           Abs(ExistingHistoricalFlow(marketDate, CStr(book), 4) - CDbl(parts(1))) > 0.005 Or _
+           Abs(ExistingHistoricalFlow(marketDate, CStr(book), 5) - CDbl(parts(2))) > 0.005 Then
+            FlowDateChanged = True
+            Exit Function
+        End If
+    Next book
+End Function
+
+Private Sub BuildExistingFlowCache()
+    Dim lo As ListObject, data As Variant, r As Long, c As Long, marketDate As Date, book As String, key As String
+    Set mHistoricalExisting = CreateObject("Scripting.Dictionary")
+    Set lo = ThisWorkbook.Worksheets(SH_FLOWS).ListObjects("tblOperatingFlows")
+    If lo.DataBodyRange Is Nothing Then Exit Sub
+    data = lo.DataBodyRange.Value2
+    For r = 1 To UBound(data, 1)
+        If IsDate(data(r, 1)) Or IsNumeric(data(r, 1)) Then
+            marketDate = DateValue(CDate(data(r, 1)))
+            book = UCase$(Trim$(CStr(data(r, 2))))
+            For c = 3 To 5
+                key = CStr(CLng(marketDate)) & "|" & book & "|" & CStr(c)
+                mHistoricalExisting(key) = NzNumber(data(r, c))
+            Next c
+        End If
+    Next r
+End Sub
+
+Private Function ExistingHistoricalFlow(ByVal marketDate As Date, ByVal book As String, ByVal columnIndex As Long) As Double
+    Dim key As String
+    key = CStr(CLng(marketDate)) & "|" & UCase$(book) & "|" & CStr(columnIndex)
+    If mHistoricalExisting.Exists(key) Then ExistingHistoricalFlow = CDbl(mHistoricalExisting(key))
+End Function
+
+Private Function ReadHistoricalStartDate() As Date
+    Dim value As Variant
+    value = ThisWorkbook.Worksheets(SH_MANUAL).Range("P5").Value
+    If Not IsDate(value) Then Err.Raise vbObjectError + 2152, , "Historical Start Date no contiene una fecha valida."
+    ReadHistoricalStartDate = DateValue(CDate(value))
+End Function
 
 Private Function OpenFotoFO(ByVal sourcePath As String, ByRef openedHere As Boolean) As Workbook
     Dim wb As Workbook
@@ -241,7 +462,7 @@ End Function
 
 Private Function ReadLastMarketDate() As Date
     Dim value As Variant
-    value = ThisWorkbook.Worksheets(SH_MANUAL).Range("F5").Value
+    value = ThisWorkbook.Worksheets(SH_MANUAL).Range("P6").Value
     If Not IsDate(value) Then Err.Raise vbObjectError + 2102, , "DAILY-001 / Last Market Date no contiene una fecha válida."
     ReadLastMarketDate = DateValue(CDate(value))
     If Not IsConfiguredMarketDate(ReadLastMarketDate) Then Err.Raise vbObjectError + 2103, , "Last Market Date no está marcado como Market Day en MARKET CALENDAR."

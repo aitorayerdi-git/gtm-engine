@@ -51,9 +51,10 @@ Every run follows the same sequence:
 - Leave an optional field blank rather than entering `N/A`.
 - Save a working copy before making a large import.
 
-### 3.2 `CONTROL`
+### 3.2 `MANUAL CHANGES` and `CONTROL`
 
-`CONTROL` defines the run.
+Operators enter every operative date in `MANUAL CHANGES!tblManualDates`. `CONTROL` retains only
+non-date technical and policy settings.
 
 | Field | What to enter |
 |---|---|
@@ -63,7 +64,9 @@ Every run follows the same sequence:
 | Engine Version | Keep the supplied value unless the engine is upgraded. |
 | Initial Market Date | The close-of-day date represented by Initial Exposure and Initial P&L. |
 | Historical Start Date | The first date requested for reconstruction; normally the Initial Market Date. |
-| Historical End Date | The final requested reporting date. |
+| Historical End Date | The single Last Market Date used by Foto FO and as the final calculation/reporting date. |
+| Exposure Report Start Month | First Delivery Month displayed in the Exposure report; enter the first day of the month. |
+| Exposure Report End Month | Last Delivery Month displayed in the Exposure report; enter the first day of the month. |
 | Simulation Status | `OFF` excludes simulation trades; `ON` includes them. |
 | Timezone | Keep `Europe/Madrid` unless the operating convention changes. |
 | Logistics Sign | Normally `-1`: a positive stored Logistics cost reduces P&L. |

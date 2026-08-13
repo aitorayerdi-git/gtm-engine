@@ -104,18 +104,61 @@ try {
     }
 
     $sheet = $workbook.Worksheets.Item('MANUAL CHANGES')
-    $sheet.Range('F4').Value = 'MARKET DATE'
+    $lastMarketDate = $sheet.Range('F5').Value2
+    if (-not $lastMarketDate) { $lastMarketDate = $workbook.Worksheets.Item('CONTROL').Range('B11').Value2 }
+    $sheet.Range('F4').Value = 'LAST MARKET DATE (DISPLAY)'
+    $sheet.Range('F5').Formula = '=P6'
     $sheet.Range('G5:H504').ClearContents()
     $sheet.Columns.Item('G:H').Hidden = $true
     $sheet.Columns.Item('F').ColumnWidth = 14
     $sheet.Range('A2:M2').UnMerge()
     $sheet.Range('A2:M2').Merge()
-    $sheet.Range('A2').Value = 'Edit only MARKET DATE in column F. UPDATE FOTO FO uses this date; hidden date columns are not operative.'
+    $sheet.Range('A2').Value = 'Edit all operative dates in MODEL DATES below. Last Market Date is entered once and is shared by Foto FO and the Python engine.'
+
+    # Single visible authority for every operative model date.
+    foreach ($existingTable in @($sheet.ListObjects)) {
+        if ($existingTable.Name -eq 'tblManualDates') { $existingTable.Unlist() }
+    }
+    $initialDate = $workbook.Worksheets.Item('CONTROL').Range('B9').Value2
+    $historicalStart = $workbook.Worksheets.Item('CONTROL').Range('B10').Value2
+    $sheet.Range('O3:Q8').ClearContents()
+    $sheet.Range('O3').Value = 'Field'
+    $sheet.Range('P3').Value = 'Date'
+    $sheet.Range('Q3').Value = 'Explanation'
+    $manualDates = @(
+        @('Initial Market Date', $initialDate, 'Closing date represented by INITIAL EXPOSURE and INITIAL PNL.'),
+        @('Historical Start Date', $historicalStart, 'First Market Date reconstructed by the engine.'),
+        @('Historical End Date', $lastMarketDate, 'Single Last Market Date for Foto FO, Fixings, Costs, Fees, Optimizations, Replication, Exposure and P&L.'),
+        @('Exposure Report Start Month', [datetime]'2026-08-01', 'First Delivery Month displayed in the Exposure report; enter the first day of the month.'),
+        @('Exposure Report End Month', [datetime]'2028-12-01', 'Last Delivery Month displayed in the Exposure report; enter the first day of the month.')
+    )
+    for ($dateIndex = 0; $dateIndex -lt $manualDates.Count; $dateIndex++) {
+        $row = 4 + $dateIndex
+        $sheet.Cells.Item($row, 15).Value = $manualDates[$dateIndex][0]
+        $sheet.Cells.Item($row, 16).Value = $manualDates[$dateIndex][1]
+        $sheet.Cells.Item($row, 17).Value = $manualDates[$dateIndex][2]
+    }
+    $manualDateTable = $sheet.ListObjects.Add(1, $sheet.Range('O3:Q8'), $null, 1)
+    $manualDateTable.Name = 'tblManualDates'
+    $manualDateTable.TableStyle = 'TableStyleMedium2'
+    $sheet.Range('P4:P8').NumberFormat = 'dd/mm/yyyy'
+    $sheet.Columns.Item('O').ColumnWidth = 30
+    $sheet.Columns.Item('P').ColumnWidth = 16
+    $sheet.Columns.Item('Q').ColumnWidth = 75
+
+    # Dates are no longer editable or duplicated in CONTROL.
+    $controlTable = $workbook.Worksheets.Item('CONTROL').ListObjects.Item('tblControl')
+    for ($controlIndex = $controlTable.ListRows.Count; $controlIndex -ge 1; $controlIndex--) {
+        $fieldName = [string]$controlTable.ListRows.Item($controlIndex).Range.Cells.Item(1, 1).Value2
+        if ($fieldName -in @('Initial Market Date', 'Historical Start Date', 'Historical End Date')) {
+            $controlTable.ListRows.Item($controlIndex).Delete()
+        }
+    }
     foreach ($existing in @($sheet.Buttons())) {
         if ($existing.Name -eq 'btnUpdateFotoFO') { $existing.Delete() }
     }
 
-    $anchor = $sheet.Range('O5:R6')
+    $anchor = $sheet.Range('S3:V4')
     $button = $sheet.Buttons().Add($anchor.Left, $anchor.Top, $anchor.Width, $anchor.Height)
     $button.Name = 'btnUpdateFotoFO'
     $button.Characters().Text = 'UPDATE FOTO FO'

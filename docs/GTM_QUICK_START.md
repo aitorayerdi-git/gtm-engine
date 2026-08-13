@@ -37,7 +37,7 @@ outputs/gtm_excel_v0_3/GTM_Excel_Interface_v0.3.xlsx
 
 Enter values in the blue input tables:
 
-1. `CONTROL`: enter the Initial Market Date, Historical Start Date, and Historical End Date.
+1. `MANUAL CHANGES`: enter all dates in `tblManualDates`. Historical End Date is the single Last Market Date shared by Foto FO and the engine.
 2. `MARKET CALENDAR`: supply every calendar date needed by the model and mark each date as a
    Market Day or non-Market Day.
 3. `INITIAL EXPOSURE`: enter the positions open at the close of the Initial Market Date.
