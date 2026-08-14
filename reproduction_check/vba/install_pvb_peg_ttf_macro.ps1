@@ -6,9 +6,17 @@ $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
 $excel.EnableEvents = $false
+$excel.ScreenUpdating = $false
+$excel.AskToUpdateLinks = $false
+$excel.AutomationSecurity = 3 # msoAutomationSecurityForceDisable
 $workbook = $null
+$bootstrap = $null
 try {
+    $bootstrap = $excel.Workbooks.Add()
+    $excel.Calculation = -4135 # xlCalculationManual
     $workbook = $excel.Workbooks.Open($Path, 0, $false)
+    $bootstrap.Close($false)
+    $bootstrap = $null
     foreach ($componentName in @('modPvbPegTtfUpdate', 'Módulo4')) {
         $existing = $null
         try { $existing = $workbook.VBProject.VBComponents.Item($componentName) } catch {}
@@ -35,5 +43,6 @@ try {
 }
 finally {
     if ($null -ne $workbook) { $workbook.Close($false) }
+    if ($null -ne $bootstrap) { $bootstrap.Close($false) }
     $excel.Quit()
 }

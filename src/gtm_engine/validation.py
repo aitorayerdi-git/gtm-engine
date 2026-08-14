@@ -55,8 +55,32 @@ def _item(
     )
 
 
-def included_trade(trade: Trade, bundle: InputBundle) -> bool:
-    if trade.trade_date <= bundle.config.initial_market_date:
+PVB_MO_CANONICAL_UNDERLYINGS = {"INDEX PVB", "PHYS PVB"}
+
+
+def trade_initial_position_market_date(
+    trade: Trade,
+    bundle: InputBundle,
+    registry: Registry | None = None,
+) -> date:
+    """Return the closing-position cut-off applicable to a trade."""
+    registry = registry or Registry.from_bundle(bundle)
+    underlying = registry.underlying(trade.underlying)
+    if (
+        underlying is not None
+        and normalize_text(underlying.canonical_underlying) in PVB_MO_CANONICAL_UNDERLYINGS
+        and bundle.config.pvb_mo_market_date is not None
+    ):
+        return bundle.config.pvb_mo_market_date
+    return bundle.config.initial_market_date
+
+
+def included_trade(
+    trade: Trade,
+    bundle: InputBundle,
+    registry: Registry | None = None,
+) -> bool:
+    if trade.trade_date <= trade_initial_position_market_date(trade, bundle, registry):
         return False
     if trade.trade_source is TradeSource.SIMULATION:
         return bundle.config.simulation_status is SimulationStatus.ON
@@ -326,7 +350,7 @@ def validate_bundle(bundle: InputBundle, build_id: str) -> tuple[ValidationItem,
             )
 
     for trade in bundle.trades:
-        if not included_trade(trade, bundle):
+        if not included_trade(trade, bundle, registry):
             continue
         book = registry.book(trade.book)
         underlying = registry.underlying(trade.underlying)

@@ -70,6 +70,7 @@ Private Sub UpdateFotoFOCore(ByVal sourcePath As String, ByVal localTest As Bool
     detailText = "Rebuild completo: " & reviewedDates & " fechas revisadas; " & changedDates & " modificadas; " & rowCount & " filas publicadas."
     WriteAudit startedAt, Now, targetDate, sourceLabel, statusText, detailText, rowCount, activeBooks.Count
     UpdateManualStatus Now, targetDate, sourceLabel, statusText, detailText
+    SetSourceControl "Foto FO", Now, targetDate, MarketStatusText(targetDate)
 
     If openedHere Then sourceBook.Close SaveChanges:=False
     RestoreExcel oldCalc, oldEvents, oldScreen, oldAlerts
@@ -83,6 +84,7 @@ Failed:
     If Not sourceBook Is Nothing Then If openedHere Then sourceBook.Close SaveChanges:=False
     WriteAudit startedAt, Now, targetDate, sourceLabel, statusText, detailText, rowCount, IIf(activeBooks Is Nothing, 0, activeBooks.Count)
     UpdateManualStatus Now, targetDate, sourceLabel, statusText, detailText
+    SetSourceStatusOnly "Foto FO", "ERROR - " & detailText
     RestoreExcel oldCalc, oldEvents, oldScreen, oldAlerts
     On Error GoTo 0
     If Not localTest Then MsgBox "No se ha publicado la actualización." & vbCrLf & detailText, vbCritical, "Foto FO - ERROR"
@@ -301,7 +303,7 @@ End Function
 
 Private Function ReadHistoricalStartDate() As Date
     Dim value As Variant
-    value = ThisWorkbook.Worksheets(SH_MANUAL).Range("P5").Value
+    value = TableLookupValue("tblManualDates", "Field", "Historical Start Date", "Date")
     If Not IsDate(value) Then Err.Raise vbObjectError + 2152, , "Historical Start Date no contiene una fecha valida."
     ReadHistoricalStartDate = DateValue(CDate(value))
 End Function
@@ -462,7 +464,7 @@ End Function
 
 Private Function ReadLastMarketDate() As Date
     Dim value As Variant
-    value = ThisWorkbook.Worksheets(SH_MANUAL).Range("P6").Value
+    value = TableLookupValue("tblManualDates", "Field", "Historical End Date", "Date")
     If Not IsDate(value) Then Err.Raise vbObjectError + 2102, , "DAILY-001 / Last Market Date no contiene una fecha válida."
     ReadLastMarketDate = DateValue(CDate(value))
     If Not IsConfiguredMarketDate(ReadLastMarketDate) Then Err.Raise vbObjectError + 2103, , "Last Market Date no está marcado como Market Day en MARKET CALENDAR."
@@ -911,15 +913,24 @@ Private Function MaxDateInColumn(ByVal ws As Worksheet, ByVal columnIndex As Lon
 End Function
 
 Private Sub UpdateManualStatus(ByVal stamp As Date, ByVal targetDate As Date, ByVal source As String, ByVal status As String, ByVal detail As String)
-    Dim ws As Worksheet
-    Set ws = ThisWorkbook.Worksheets(SH_MANUAL)
-    ws.Range("I6").Value = stamp
-    ws.Range("L6").Value = targetDate
-    ws.Range("M6").Value = status & " - " & detail
-    ws.Range("J6").Value = Environ$("Username")
-    ws.Range("F6").Value = source
-    ws.Range("I6").NumberFormat = "yyyy-mm-dd hh:mm:ss"
-    ws.Range("L6").NumberFormat = "yyyy-mm-dd"
+    Dim table As ListObject, rowIndex As Long, ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        On Error Resume Next
+        Set table = ws.ListObjects("ManualChangesTable")
+        On Error GoTo 0
+        If Not table Is Nothing Then Exit For
+    Next ws
+    If table Is Nothing Then Err.Raise vbObjectError + 2153, , "Falta ManualChangesTable."
+    For rowIndex = 1 To table.DataBodyRange.Rows.Count
+        If StrComp(Trim$(CStr(table.DataBodyRange.Cells(rowIndex, table.ListColumns("CHANGE ID").Index).Value)), "DAILY-002", vbTextCompare) = 0 Then Exit For
+    Next rowIndex
+    If rowIndex > table.DataBodyRange.Rows.Count Then Err.Raise vbObjectError + 2154, , "Falta DAILY-002 en ManualChangesTable."
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("LAST UPDATED").Index).Value = stamp
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("LATEST DATE LOADED").Index).Value = targetDate
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("CONTROL STATUS").Index).Value = status & " - " & detail
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("UPDATED BY").Index).Value = Environ$("Username")
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("LAST UPDATED").Index).NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    table.DataBodyRange.Cells(rowIndex, table.ListColumns("LATEST DATE LOADED").Index).NumberFormat = "yyyy-mm-dd"
 End Sub
 
 Private Sub WriteAudit(ByVal startedAt As Date, ByVal finishedAt As Date, ByVal targetDate As Date, ByVal source As String, ByVal status As String, ByVal detail As String, ByVal rowsWritten As Long, ByVal expectedBooks As Long)

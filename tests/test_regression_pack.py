@@ -17,6 +17,7 @@ from gtm_engine.models import (
     TradeSource,
 )
 from gtm_engine.pipeline import build
+from gtm_engine.validation import included_trade
 
 from .helpers import base_bundle, underlying, with_prices
 
@@ -471,6 +472,40 @@ def test_pack_11_only_trades_after_initial_market_date_are_incremental() -> None
     assert "PACK-11-A" not in source_ids
     assert "PACK-11-B" in source_ids
     assert result.exposure[0].exposure_volume == D("100")
+
+
+def test_pvb_mo_trade_boundary_uses_its_own_closing_market_date() -> None:
+    pvb = underlying("Mibgas API DA", canonical="Index PVB")
+    bundle = base_bundle(
+        initial_market_date=date(2026, 6, 26),
+        historical_end_date=date(2026, 7, 3),
+        underlyings=(pvb,),
+    )
+    bundle = bundle.model_copy(
+        update={
+            "config": bundle.config.model_copy(
+                update={"pvb_mo_market_date": date(2026, 6, 30)}
+            )
+        }
+    )
+
+    trades = tuple(
+        _trade(
+            source_row_id,
+            trade_date=trade_date,
+            start_date=date(2026, 9, 1),
+            underlying_name="Mibgas API DA",
+        )
+        for source_row_id, trade_date in (
+            ("PVB-MO-BEFORE", date(2026, 6, 29)),
+            ("PVB-MO-SAME-DAY", date(2026, 6, 30)),
+            ("PVB-MO-AFTER", date(2026, 7, 1)),
+        )
+    )
+
+    assert not included_trade(trades[0], bundle)
+    assert not included_trade(trades[1], bundle)
+    assert included_trade(trades[2], bundle)
 
 
 def test_pack_12_end_to_end_conservation_reconciles_to_eur_500() -> None:

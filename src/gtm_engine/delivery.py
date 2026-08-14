@@ -173,7 +173,8 @@ def split_delivery_trades(
     eligible = tuple(
         row
         for row in bundle.trades
-        if included_trade(row, bundle) and normalize_text(row.underlying) in DELIVERY_VARIANTS
+        if included_trade(row, bundle, registry)
+        and normalize_text(row.underlying) in DELIVERY_VARIANTS
     )
     candidates: dict[DeliveryKey, list[Trade]] = defaultdict(list)
     for trade in eligible:

@@ -463,7 +463,8 @@ def _write_exposure_sheets(workbook: Workbook, result) -> None:
     add_selector_sheet("Delta Exposure MtM", 13)
 
 
-def _write_output(destination: Path, bundle, result) -> None:
+def write_business_output(destination: Path, bundle, result) -> None:
+    """Write the reviewed seven-sheet fixing and exposure business output."""
     columns_list: list[str] = []
     for profile in bundle.underlyings:
         if not profile.active:
@@ -572,7 +573,7 @@ def main() -> int:
     if roundtrip_result.manifest.status is not BuildStatus.VERIFIED:
         errors = [row.model_dump(mode="json") for row in roundtrip_result.validation]
         raise RuntimeError(f"Generated Excel did not verify after reload: {errors}")
-    _write_output(args.output, roundtrip_bundle, roundtrip_result)
+    write_business_output(args.output, roundtrip_bundle, roundtrip_result)
     delivery_totals = {
         name: sum(
             (

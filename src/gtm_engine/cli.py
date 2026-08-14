@@ -16,7 +16,11 @@ from .excel import (
     publish_excel_load_failure,
 )
 from .io import BundleLoadError, load_bundle, publish_result
-from .legacy_import import LegacyImportError, import_legacy_workbook
+from .legacy_import import (
+    LegacyImportError,
+    import_legacy_workbook,
+    refresh_legacy_curve_table,
+)
 from .models import BookConfig, BuildStatus, UnderlyingConfig
 from .pipeline import build
 
@@ -57,11 +61,36 @@ def _parser() -> argparse.ArgumentParser:
         type=date.fromisoformat,
         help="Optional YYYY-MM-DD override for legacy PROCESS!D15",
     )
+    refresh_command = subcommands.add_parser(
+        "excel-refresh-curves",
+        help="Rebuild CURVE PRICES from cached provider sheets in an Excel snapshot",
+    )
+    refresh_command.add_argument("--workbook", required=True, type=Path)
+    refresh_command.add_argument("--historical-end", type=date.fromisoformat)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "excel-refresh-curves":
+        try:
+            count, latest = refresh_legacy_curve_table(
+                args.workbook, historical_end=args.historical_end
+            )
+        except (LegacyImportError, OSError, KeyError, ValueError) as exc:
+            print(json.dumps({"status": "FAILED", "stage": "CurveRefresh", "error": str(exc)}))
+            return 2
+        print(
+            json.dumps(
+                {
+                    "status": "REFRESHED",
+                    "row_count": count,
+                    "latest_market_date": latest.isoformat() if latest else None,
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "legacy-import":
         try:
             imported = import_legacy_workbook(

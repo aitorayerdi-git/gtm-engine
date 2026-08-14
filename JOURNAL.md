@@ -2937,3 +2937,76 @@ Backups retained beside the operative workbook include `Input data pre Reuters 2
 `Input data pre PVB PEG macro 20260813.xlsm`, and `Input data pre Historical DA 20260813.xlsm`.
 Test workbooks and `.reuters-*` validation directories are local disposable evidence and are not
 part of the source commit.
+
+## 2026-08-14 - Market-data refresh controls corrected
+
+The saved operator run showed that PVB-TTF and PEG-TTF had refreshed through 13 August, but the
+macro could not report their latest date because it inspected column B. That column depends on the
+separate Foto FO workbook and had recalculated to `#VALUE!`. The refresh now excludes column B and
+uses the source observation date in column A when reporting coverage. SharePoint is opened without
+updating its own links, and any failure now identifies the exact refresh phase.
+
+The combined Reuters/MarketView action now reports success only when both sources reach Historical
+End Date. A source's Last Refresh At timestamp changes only after successful coverage. The saved
+workbook showed MarketView current through 13 August and Reuters TTF, Brent Dated and HH still at
+12 August (EURF reached 13 August), so Reuters correctly remains CHECK until the provider returns
+the missing observations. The corrected modules were installed in `Input data.xlsm`; the untouched
+pre-fix workbook is `Input data pre refresh fixes 20260814.xlsm`.
+
+After the operator review, the combined control was replaced with two independent actions.
+`UPDATE + CHECK REUTERS` recalculates only TTF, Brent Dated, HH and EURF and updates only the Reuters
+status. `CHECK MARKETVIEW` does not trigger MarketView or recalculate `Historical_DA`; it checks the
+cached values after the operator's manual MarketView refresh and updates only the MarketView row.
+The timestamp heading is now `Last Successful Check At`. The saved pre-separation workbook is
+`Input data pre separated checks 20260814.xlsm`.
+## 2026-08-14 — PVB MO initial-position trade rule
+
+The user clarified the intended business treatment of `INITIAL POSITION PVB MO`. `Market Date
+INITIAL POSITION PVB MO` is the date corresponding to the MO information at that date's close.
+The initial position defines Phys PVB and decomposes Index PVB into its constituent PVB
+underlyings; each constituent then fixes according to its own configured methodology.
+
+Trades already represented in the MO closing position must not be applied again. The inclusion
+rule is based only on the two dates:
+
+- if `Trade Date > Market Date INITIAL POSITION PVB MO`, add the trade to Exposure;
+- if `Trade Date <= Market Date INITIAL POSITION PVB MO`, do not add the trade to Exposure.
+
+Therefore, trades with the same Trade Date as the initial-position Market Date are considered
+included in the MO closing information. No timestamp or intraday classification is required.
+
+The required event sequence is:
+
+1. apply the approved `INITIAL POSITION PVB MO` closing position;
+2. apply only trades whose Trade Date is later than its Market Date;
+3. apply scheduled fixings;
+4. calculate component Exposure as initial position plus included trades plus opposite-signed
+   fixing closures;
+5. aggregate the component exposures back to Index PVB for reporting without retaining a second
+   economic Index PVB position that would double count volume.
+
+At the snapshot, Phys PVB is expected to offset the sum of the Index PVB components under the
+approved sign convention. After the snapshot, incremental trades may legitimately break that
+balance, and the resulting difference is real Exposure rather than a reconciliation error.
+
+## 2026-08-14 — End-of-day handoff: operator output contract restored
+
+The `GENERATE GTM OUTPUT` workflow completed successfully from `Input data v2.xlsm` with build
+`GTM3-90159BAB814DAD6E0083` and zero validation findings. The initial publication exposed the
+normalized technical interface workbook as `GTM_LATEST.xlsx`, which retained the input sheets and
+did not match the reviewed business-output contract.
+
+The publisher now retains `GTM_Result.xlsx` only as technical evidence inside the immutable run
+directory and publishes a separate `GTM_Output.xlsx` as `outputs/gtm_excel_runs/GTM_LATEST.xlsx`.
+The operator-facing workbook has the same seven-sheet contract as
+`verification/output test fixing exposure Jul26.xlsx`: the three fixing matrices, Exposure data,
+hidden Lists, Exposure by Market Date, and Delta Exposure MtM. A command-line run through the same
+installed executable used by the Excel button published run
+`3ca7c714-a134-4615-b091-a6fd26e4c00d`; the resulting workbook has 12,170 Exposure data rows, four
+Excel tables, 648 selector-view formulas, and the required seven sheets in the reviewed order.
+
+Two focused automated tests passed, including the clean self-contained reconstruction. The actual
+installed CLI path was then exercised successfully, covering the packaging/runtime path that the
+button uses. Resume from `reproduction_check/Input data v2.xlsm`; the latest reviewed business
+output is `outputs/gtm_excel_runs/GTM_LATEST.xlsx`. Local `.reuters-*`, pytest, generated Excel and
+snapshot artifacts remain disposable evidence and are intentionally not committed.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 import os
 import shutil
@@ -260,6 +261,7 @@ OUTPUT_TABLES = (
 
 MANUAL_DATE_FIELDS = (
     "initial_market_date",
+    "pvb_mo_market_date",
     "historical_start_date",
     "historical_end_date",
     "exposure_report_start_month",
@@ -268,6 +270,10 @@ MANUAL_DATE_FIELDS = (
 CONTROL_FIELDS = tuple(field for field in BuildConfig.model_fields if field not in MANUAL_DATE_FIELDS)
 MANUAL_DATE_DESCRIPTIONS = {
     "initial_market_date": "Closing date represented by INITIAL EXPOSURE and INITIAL PNL.",
+    "pvb_mo_market_date": (
+        "Closing date represented by INITIAL POSITION PVB MO. Only PVB trades with a later "
+        "Trade Date are incremental; blank uses Initial Market Date for backward compatibility."
+    ),
     "historical_start_date": "First Market Date reconstructed by the engine.",
     "historical_end_date": (
         "Single Last Market Date for Foto FO, Fixings, Costs, Fees, Optimizations, "
@@ -309,11 +315,16 @@ def _file_hash(path: Path) -> str:
 
 
 def _display_header(field: str) -> str:
+    if field == "pvb_mo_market_date":
+        return "Market Date INITIAL POSITION PVB MO"
     return field.replace("_", " ").title()
 
 
 def _normalize_header(value: Any) -> str:
-    return str(value).strip().lower().replace(" ", "_")
+    normalized = str(value).strip().lower().replace(" ", "_")
+    if normalized == "market_date_initial_position_pvb_mo":
+        return "pvb_mo_market_date"
+    return normalized
 
 
 def _clean_value(value: Any) -> Any:
@@ -488,8 +499,8 @@ def load_excel_bundle(workbook_path: str | Path) -> InputBundle:
     path = Path(workbook_path).expanduser().resolve()
     if not path.exists():
         raise ExcelAdapterError(f"Excel workbook does not exist: {path}")
-    if path.suffix.lower() != ".xlsx":
-        raise ExcelAdapterError("Excel interface must be a macro-free .xlsx workbook")
+    if path.suffix.lower() not in {".xlsx", ".xlsm"}:
+        raise ExcelAdapterError("Excel interface must be an .xlsx or .xlsm workbook")
     try:
         workbook = load_workbook(path, data_only=False, keep_links=False)
     except Exception as exc:
@@ -669,6 +680,7 @@ def _control_rows(config: BuildConfig | None) -> list[dict[str, Any]]:
         "policy_version": POLICY_VERSION,
         "engine_version": ENGINE_VERSION,
         "initial_market_date": None,
+        "pvb_mo_market_date": None,
         "historical_start_date": None,
         "historical_end_date": None,
         "exposure_report_start_month": None,
@@ -714,7 +726,10 @@ def _add_manual_dates_sheet(workbook: Workbook, config: BuildConfig | None) -> N
     sheet.column_dimensions["A"].width = 32
     sheet.column_dimensions["B"].width = 18
     sheet.column_dimensions["C"].width = 85
-    table = Table(displayName="tblManualDates", ref="A4:C9")
+    table = Table(
+        displayName="tblManualDates",
+        ref=f"A4:C{4 + len(MANUAL_DATE_FIELDS)}",
+    )
     table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
     sheet.add_table(table)
     sheet.freeze_panes = "A5"
@@ -1400,7 +1415,20 @@ def build_excel_workbook(
     if _file_hash(source) != source_hash:
         raise ExcelAdapterError("Source workbook changed during the build; result was not promoted")
     if published.manifest.status is BuildStatus.PUBLISHED:
-        _atomic_copy(result_workbook, Path(output_root).expanduser().resolve() / "GTM_LATEST.xlsx")
+        # Retain the normalized interface as technical evidence. The operator-facing
+        # workbook follows the reviewed fixing/exposure output contract.
+        business_workbook = run_directory / "GTM_Output.xlsx"
+        generator_path = Path(__file__).resolve().parents[2] / "scripts" / "create_fixing_test.py"
+        spec = importlib.util.spec_from_file_location("gtm_business_output", generator_path)
+        if spec is None or spec.loader is None:
+            raise ExcelAdapterError(f"Cannot load business output generator: {generator_path}")
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+        generator.write_business_output(business_workbook, bundle, published)
+        _atomic_copy(
+            business_workbook,
+            Path(output_root).expanduser().resolve() / "GTM_LATEST.xlsx",
+        )
     return published, run_directory, result_workbook
 
 
@@ -1412,7 +1440,7 @@ def publish_excel_load_failure(
     """Best-effort diagnostic workbook for a contract/load error; never promotes latest."""
 
     source = Path(source_workbook).expanduser().resolve()
-    if not source.exists() or source.suffix.lower() != ".xlsx":
+    if not source.exists() or source.suffix.lower() not in {".xlsx", ".xlsm"}:
         return None
     run_name = f"load-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{_file_hash(source)[:8]}"
     run_directory = Path(output_root).expanduser().resolve() / "failed" / run_name

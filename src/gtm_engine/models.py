@@ -81,6 +81,7 @@ class BuildConfig(StrictModel):
     policy_version: str = POLICY_VERSION
     engine_version: str = ENGINE_VERSION
     initial_market_date: date
+    pvb_mo_market_date: date | None = None
     historical_start_date: date
     historical_end_date: date
     exposure_report_start_month: date | None = None

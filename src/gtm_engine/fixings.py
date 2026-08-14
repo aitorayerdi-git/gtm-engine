@@ -252,7 +252,7 @@ def build_schedules(
             )
 
     for trade in sorted(bundle.trades, key=lambda row: (row.trade_date, row.source_row_id)):
-        if not included_trade(trade, bundle) or not is_material(
+        if not included_trade(trade, bundle, registry) or not is_material(
             trade.daily_qty, bundle.config.materiality
         ):
             continue

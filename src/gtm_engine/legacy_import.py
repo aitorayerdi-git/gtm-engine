@@ -17,7 +17,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, range_boundaries
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from pydantic import ValidationError
 
@@ -1233,6 +1233,91 @@ def read_legacy_workbook(
     report.extracted_row_counts["trades"] = len(bundle.trades)
     _add_methodology_issues(bundle, report)
     return bundle, report
+
+
+def refresh_legacy_curve_table(
+    workbook_path: str | Path,
+    *,
+    historical_end: date | None = None,
+) -> tuple[int, date | None]:
+    """Rebuild tblCurvePrices in an interface snapshot from its cached provider sheets."""
+
+    source = Path(workbook_path).expanduser().resolve()
+    report = LegacyImportReport(
+        source_path=str(source),
+        source_sha256=_file_hash(source),
+        source_modified_at=datetime.fromtimestamp(source.stat().st_mtime, tz=UTC).isoformat(),
+        imported_at=datetime.now(tz=UTC).isoformat(),
+    )
+    cached = load_workbook(source, data_only=True, read_only=True, keep_links=False)
+    try:
+        manual_dates = cached["MANUAL CHANGES"]
+        date_values = {
+            _text(row[0]): _optional_date(row[1])
+            for row in manual_dates.iter_rows(min_row=6, min_col=1, max_col=2, values_only=True)
+            if row[0] not in (None, "")
+        }
+        initial = date_values.get("Initial Market Date")
+        start = date_values.get("Historical Start Date")
+        end = historical_end or date_values.get("Historical End Date")
+        if initial is None or start is None or end is None:
+            raise LegacyImportError("MANUAL CHANGES does not contain the three required dates")
+        config = BuildConfig(
+            initial_market_date=initial,
+            historical_start_date=start,
+            historical_end_date=end,
+            simulation_status=SimulationStatus.OFF,
+        )
+        curves = _extract_curves(cached, config, report)
+        existing_rows: dict[tuple[date, str, date], tuple[Any, ...]] = {}
+        for values in cached["CURVE PRICES"].iter_rows(
+            min_row=5, min_col=1, max_col=8, values_only=True
+        ):
+            market_date = _optional_date(values[0])
+            delivery_month = _optional_date(values[2])
+            if market_date is None or delivery_month is None or not _text(values[1]):
+                continue
+            existing_rows[(market_date, _text(values[1]).casefold(), delivery_month)] = values
+    finally:
+        cached.close()
+
+    merged_rows = existing_rows
+    for curve in curves:
+        merged_rows[(curve.market_date, curve.underlying.casefold(), curve.delivery_month)] = (
+            curve.market_date,
+            curve.underlying,
+            curve.delivery_month,
+            curve.curve_price,
+            curve.currency,
+            curve.unit,
+            curve.source_id,
+            curve.source_as_of,
+        )
+    output_rows = tuple(
+        merged_rows[key]
+        for key in sorted(merged_rows, key=lambda item: (item[0], item[1], item[2]))
+    )
+
+    workbook = load_workbook(source, data_only=False, keep_links=False)
+    try:
+        sheet = workbook["CURVE PRICES"]
+        table = sheet.tables["tblCurvePrices"]
+        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        for row in sheet.iter_rows(
+            min_row=min_row + 1, max_row=max_row, min_col=min_col, max_col=max_col
+        ):
+            for cell in row:
+                cell.value = None
+        for row_number, values in enumerate(output_rows, start=min_row + 1):
+            for column_number, value in enumerate(values, start=min_col):
+                sheet.cell(row_number, column_number, value)
+        last_row = min_row + max(1, len(output_rows))
+        table.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{last_row}"
+        workbook.save(source)
+    finally:
+        workbook.close()
+    latest = max((curve.market_date for curve in curves), default=None)
+    return len(output_rows), latest
 
 
 def _write_audit_files(report: LegacyImportReport, root: Path) -> tuple[Path, Path]:

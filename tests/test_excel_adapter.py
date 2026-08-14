@@ -103,7 +103,12 @@ def test_excel_template_round_trip_contract_and_setup_mapping(tmp_path: Path) ->
         assert workbook["START HERE"]["B4"].value == "NOT BUILT"
         assert workbook["CONTROL"]["B9"].value == "OFF"
         assert "tblManualDates" in workbook["MANUAL CHANGES"].tables
-        assert workbook["MANUAL CHANGES"]["B7"].value.date() == date(2026, 1, 9)
+        assert (
+            workbook["MANUAL CHANGES"]["A6"].value
+            == "Market Date INITIAL POSITION PVB MO"
+        )
+        assert workbook["MANUAL CHANGES"]["B6"].value is None
+        assert workbook["MANUAL CHANGES"]["B8"].value.date() == date(2026, 1, 9)
         assert workbook["TRADES"].freeze_panes == "A5"
         assert "tblTrades" in workbook["TRADES"].tables
         assert workbook["TRADES"].sheet_view.showGridLines is False
@@ -122,7 +127,21 @@ def test_excel_build_publishes_results_and_never_changes_source(tmp_path: Path) 
     assert result.manifest.status.value == "PUBLISHED"
     assert result_workbook == run_directory / "GTM_Result.xlsx"
     assert result_workbook.exists()
-    assert (output_root / "GTM_LATEST.xlsx").read_bytes() == result_workbook.read_bytes()
+    latest_path = output_root / "GTM_LATEST.xlsx"
+    latest = load_workbook(latest_path, read_only=True, data_only=False)
+    try:
+        assert latest.sheetnames == [
+            "Fixing volume by fixing date",
+            "Fixing PnL by fixing date",
+            "Fixing PnL by market date",
+            "Exposure data",
+            "Lists",
+            "Exposure by Market Date",
+            "Delta Exposure MtM",
+        ]
+    finally:
+        latest.close()
+    assert (run_directory / "GTM_Output.xlsx").read_bytes() == latest_path.read_bytes()
     assert _hash(source) == before
     assert workbook_formula_cells(result_workbook) == ()
     assert _table_data_count(result_workbook, "FIXINGS", "tblFixings") == len(result.fixings)
